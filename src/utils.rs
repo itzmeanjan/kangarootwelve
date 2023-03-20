@@ -9,14 +9,14 @@
 /// byte length of 1. While for x = 1, first two bytes of returned array will be of interest
 /// i.e. effective byte length of 2.
 #[inline(always)]
-fn length_encode(x: usize) -> ([u8; core::mem::size_of::<usize>() + 1], usize) {
+pub fn length_encode(x: usize) -> ([u8; core::mem::size_of::<usize>() + 1], usize) {
     let mut res = [0u8; core::mem::size_of::<usize>() + 1];
 
     let bw = usize::MAX.count_ones() - x.leading_zeros();
     let l = ((bw + 7) / 8) as usize;
 
     for i in 0..l {
-        res[l - i + 1] = (x >> (l * 8)) as u8;
+        res[l - i - 1] = (x >> (i * 8)) as u8;
     }
     res[l] = l as u8;
 
