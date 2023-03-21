@@ -1,9 +1,12 @@
 use crate::utils::length_encode;
 use std::cmp;
-use turboshake::sponge;
+use turboshake::{sponge, TurboShake128};
 
+/// KangarooTwelve Extendable Output Function (XOF)
+///
+/// See https://keccak.team/files/KangarooTwelve.pdf
 #[derive(Copy, Clone)]
-struct KangarooTwelve {
+pub struct KangarooTwelve {
     state: [u64; 25],
     is_ready: usize,
     squeezable: usize,
@@ -20,8 +23,8 @@ impl KangarooTwelve {
     const D_SEP_C: u8 = 0x06;
 
     /// Create a new instance of K12 Extendable Output Function (XOF), into which
-    /// arbitrary number of message bytes can be absorbed and arbitrary many bytes
-    /// can be squeezed out.
+    /// arbitrary number of message bytes can be (already) absorbed and arbitrary
+    /// many bytes can be squeezed out.
     #[inline(always)]
     pub fn new() -> Self {
         Self {
@@ -45,17 +48,14 @@ impl KangarooTwelve {
     ///
     /// n must be 1, because it's guaranteed that S will be atleast 1 -byte wide even if both M
     /// and C are empty. Then it must be the case that 0 <= i < n.
+    ///
+    /// You may want to take a look at section 3.{2, 3} of the K12 specification
+    /// https://keccak.team/files/KangarooTwelve.pdf for understanding why this function exists.
     #[inline(always)]
-    fn get_ith_chunk(
-        i: usize,
-        msg: &[u8],
-        cstr: &[u8],
-        enc: &[u8],
-        elen: usize,
-    ) -> ([u8; Self::B], usize) {
+    fn get_ith_chunk(i: usize, msg: &[u8], cstr: &[u8], enc: &[u8]) -> ([u8; Self::B], usize) {
         let l0 = msg.len();
         let l1 = l0 + cstr.len();
-        let l2 = l1 + elen;
+        let l2 = l1 + enc.len();
 
         let mut res = [0u8; Self::B];
         let mut off = 0;
@@ -88,6 +88,14 @@ impl KangarooTwelve {
         (res, off)
     }
 
+    /// Given message (M) and customization string (C, which can be used for domain seperation)
+    /// this routine consumes both of them into Keccak\[256\] sponge state, in chunks of B -bytes
+    /// s.t. returned K12 object can be used for squeezing arbitrary number of bytes from sponge state.
+    ///
+    /// This is an implementation of the K12 tree hash mode, as described in section 3.3 of the
+    /// specification https://keccak.team/files/KangarooTwelve.pdf.
+    ///
+    /// You can use this function for oneshot hashing i.e. when all the input bytes are ready to be consumed.
     #[inline(always)]
     pub fn hash(msg: &[u8], cstr: &[u8]) -> Self {
         let (enc, elen) = length_encode(cstr.len());
@@ -98,20 +106,12 @@ impl KangarooTwelve {
             let mut state = [0u64; 25];
             let mut offset = 0;
 
+            let (chunk, clen) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
+
             sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
                 &mut state,
                 &mut offset,
-                msg,
-            );
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                cstr,
-            );
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &enc[..elen],
+                &chunk[..clen],
             );
             sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(
                 &mut state,
@@ -127,30 +127,53 @@ impl KangarooTwelve {
             let mut state = [0u64; 25];
             let mut offset = 0;
 
-            let mut moff = 0;
-            let mut coff = 0;
-            let mut eoff = 0;
-            let mut consumed = 0;
+            let (chunk, _) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
+            const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
+            const PAD_B: [u8; 2] = [0xff, 0xff];
 
-            let mut consumed = 0;
-            let readable = cmp::min(msg.len(), Self::B);
             sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
                 &mut state,
                 &mut offset,
-                &msg[..readable],
+                &chunk,
+            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &PAD_A,
             );
 
-            consumed += readable;
-            if consumed < Self::B {
-                let readable = cmp::min(cstr.len(), Self::B - consumed);
+            for i in 1..n {
+                let (chunk, clen) = Self::get_ith_chunk(i, msg, cstr, &enc[..elen]);
+                let mut cv = [0u8; 32];
+
+                let mut hasher = TurboShake128::new();
+                hasher.absorb(&chunk[..clen]);
+                hasher.finalize::<{ Self::D_SEP_B }>();
+                hasher.squeeze(&mut cv);
+
                 sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
                     &mut state,
                     &mut offset,
-                    &cstr[..readable],
+                    &cv,
                 );
-
-                consumed += readable;
             }
+
+            let (enc, elen) = length_encode(n - 1);
+
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &enc[..elen],
+            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &PAD_B,
+            );
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(
+                &mut state,
+                &mut offset,
+            );
 
             Self {
                 state,
@@ -160,9 +183,9 @@ impl KangarooTwelve {
         }
     }
 
-    /// Given that N -bytes input message is already absorbed into sponge state, this
-    /// routine is used for squeezing M -bytes out of consumable part of sponge state
-    /// ( i.e. rate portion of the state )
+    /// Given that N -bytes input message ( along with customization string ) is already
+    /// absorbed into sponge state, this routine is used for squeezing M -bytes out of
+    /// consumable part of the sponge state ( i.e. rate portion of the state ).
     ///
     /// Note, this routine can be called arbitrary number of times, for squeezing arbitrary
     /// number of bytes from sponge Keccak\[256\].
