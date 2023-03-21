@@ -22,18 +22,6 @@ impl KangarooTwelve {
     const D_SEP_B: u8 = 0x0b;
     const D_SEP_C: u8 = 0x06;
 
-    /// Create a new instance of K12 Extendable Output Function (XOF), into which
-    /// arbitrary number of message bytes can be (already) absorbed and arbitrary
-    /// many bytes can be squeezed out.
-    #[inline(always)]
-    pub fn new() -> Self {
-        Self {
-            state: [0u64; 25],
-            is_ready: usize::MIN,
-            squeezable: 0,
-        }
-    }
-
     /// Given message (M), customization string (C) and length of C encoded using `length_encode()`
     /// function ( s.t. only first `elen` bytes are of interest ), this routine extracts out `i` -th
     /// chunk ( s.t. each chunk is `B` -bytes wide ) along with how many ( must be <= B ) bytes
@@ -193,7 +181,7 @@ impl KangarooTwelve {
     /// Make sure you absorb message bytes first, then only call this function, otherwise
     /// it can't squeeze anything out.
     ///
-    /// Adapted from https://github.com/itzmeanjan/turboshake/blob/81243e8ebe792b8af53abf6b8a9dae6744949896/src/turboshake128.rs#L87-L109
+    /// Adapted from https://github.com/itzmeanjan/turboshake/blob/81243e8e/src/turboshake128.rs#L87-L109
     #[inline(always)]
     pub fn squeeze(&mut self, out: &mut [u8]) {
         if self.is_ready != usize::MAX {

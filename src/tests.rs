@@ -20,7 +20,7 @@ fn test_length_encode() {
 /// Generates static byte pattern of length 251, following
 /// https://www.ietf.org/archive/id/draft-irtf-cfrg-kangarootwelve-09.html#name-test-vectors
 ///
-/// Taken from https://github.com/itzmeanjan/turboshake/blob/81243e8ebe792b8af53abf6b8a9dae6744949896/src/tests.rs#L4-L9
+/// Taken from https://github.com/itzmeanjan/turboshake/blob/81243e8e/src/tests.rs#L4-L9
 #[allow(dead_code)]
 fn pattern() -> [u8; 251] {
     (0..251).map(|i| i).collect::<Vec<u8>>().try_into().unwrap()
@@ -29,7 +29,7 @@ fn pattern() -> [u8; 251] {
 /// Generates bytearray of length n by repeating static byte pattern returned by `pattern()`,
 /// following https://www.ietf.org/archive/id/draft-irtf-cfrg-kangarootwelve-09.html#name-test-vectors
 ///
-/// Taken from https://github.com/itzmeanjan/turboshake/blob/81243e8ebe792b8af53abf6b8a9dae6744949896/src/tests.rs#L11-L25
+/// Taken from https://github.com/itzmeanjan/turboshake/blob/81243e8e/src/tests.rs#L11-L25
 #[allow(dead_code)]
 fn ptn(n: usize) -> Vec<u8> {
     let mut res = vec![0; n];
