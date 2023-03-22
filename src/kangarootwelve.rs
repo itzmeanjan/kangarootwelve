@@ -2,6 +2,9 @@ use crate::utils::length_encode;
 use std::cmp;
 use turboshake::{sponge, TurboShake128};
 
+#[cfg(feature = "multi_threaded")]
+use rayon::{prelude::*, ThreadPoolBuilder};
+
 /// KangarooTwelve Extendable Output Function (XOF)
 ///
 /// See https://keccak.team/files/KangarooTwelve.pdf
@@ -77,14 +80,16 @@ impl KangarooTwelve {
     }
 
     /// Given message (M) and customization string (C, which can be used for domain seperation)
-    /// this routine consumes both of them into Keccak\[256\] sponge state, in chunks of B -bytes
-    /// s.t. returned K12 object can be used for squeezing arbitrary number of bytes from sponge state.
+    /// this routine consumes both of them into Keccak\[256\] sponge state, using single thread,
+    /// in chunks of B -bytes s.t. returned K12 object can be used for squeezing arbitrary number
+    /// of bytes from sponge state.
     ///
-    /// This is an implementation of the K12 tree hash mode, as described in section 3.3 of the
-    /// specification https://keccak.team/files/KangarooTwelve.pdf.
+    /// This is a single-threaded implementation of the K12 tree hash mode, as described in section 3.3
+    /// of the specification https://keccak.team/files/KangarooTwelve.pdf. You haven't configured this library
+    /// crate to use `multi_threaded` feature.
     ///
     /// You can use this function for oneshot hashing i.e. when all the input bytes are ready to be consumed.
-    #[inline(always)]
+    #[cfg(not(feature = "multi_threaded"))]
     pub fn hash(msg: &[u8], cstr: &[u8]) -> Self {
         let (enc, elen) = length_encode(cstr.len());
         let tlen = msg.len() + cstr.len() + elen;
@@ -145,6 +150,110 @@ impl KangarooTwelve {
                     &cv,
                 );
             }
+
+            let (enc, elen) = length_encode(n - 1);
+
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &enc[..elen],
+            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &PAD_B,
+            );
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(
+                &mut state,
+                &mut offset,
+            );
+
+            Self {
+                state,
+                is_ready: usize::MAX,
+                squeezable: Self::RATE_BYTES,
+            }
+        }
+    }
+
+    /// Given message (M) and customization string (C, which can be used for domain seperation)
+    /// this routine consumes both of them into Keccak\[256\] sponge state, using multiple threads i.e.
+    /// equals to # -of logical cores supported by execution environment, in chunks of B -bytes s.t.
+    /// returned K12 object can be used for squeezing arbitrary number of bytes from sponge state.
+    ///
+    /// This is a multi-threaded implementation of the K12 tree hash mode, as described in section 3.3
+    /// of the specification https://keccak.team/files/KangarooTwelve.pdf. You're using this function because
+    /// you have configured this library crate to use `multi_threaded` feature.
+    ///
+    /// You can use this function for oneshot hashing i.e. when all the input bytes are ready to be consumed.
+    #[cfg(feature = "multi_threaded")]
+    pub fn hash(msg: &[u8], cstr: &[u8]) -> Self {
+        let (enc, elen) = length_encode(cstr.len());
+        let tlen = msg.len() + cstr.len() + elen;
+        let n = (tlen + (Self::B - 1)) / Self::B;
+
+        if n == 1 {
+            let mut state = [0u64; 25];
+            let mut offset = 0;
+
+            let (chunk, clen) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
+
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &chunk[..clen],
+            );
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(
+                &mut state,
+                &mut offset,
+            );
+
+            Self {
+                state,
+                is_ready: usize::MAX,
+                squeezable: Self::RATE_BYTES,
+            }
+        } else {
+            let mut state = [0u64; 25];
+            let mut offset = 0;
+
+            let (chunk, _) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
+            const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
+            const PAD_B: [u8; 2] = [0xff, 0xff];
+
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &chunk,
+            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &PAD_A,
+            );
+
+            let cpus = cmp::min(num_cpus::get(), n - 1);
+            let pool = ThreadPoolBuilder::new().num_threads(cpus).build().unwrap();
+            let cvs = pool.install(|| {
+                let mut cvs = vec![0u8; (n - 1) * 32];
+
+                cvs.par_chunks_mut(32).enumerate().for_each(|(i, cv)| {
+                    let (chunk, clen) = Self::get_ith_chunk(i + 1, msg, cstr, &enc[..elen]);
+
+                    let mut hasher = TurboShake128::new();
+                    hasher.absorb(&chunk[..clen]);
+                    hasher.finalize::<{ Self::D_SEP_B }>();
+                    hasher.squeeze(cv);
+                });
+
+                cvs
+            });
+
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
+                &mut state,
+                &mut offset,
+                &cvs,
+            );
 
             let (enc, elen) = length_encode(n - 1);
 

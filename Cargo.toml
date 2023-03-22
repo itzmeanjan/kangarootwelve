@@ -1,6 +1,6 @@
 [package]
 name = "kangarootwelve"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Anjan Roy <hello@itzmeanjan.in>"]
 description = "BlaKE12: Blazing-fast KEccak on 12 rounds"
@@ -12,7 +12,12 @@ keywords = ["keccak", "xof", "turboshake", "kangarootwelve", "k12"]
 categories = ["cryptography"]
 
 [dependencies]
-turboshake = { version = "=0.1.4", features = ["dev"]}
+turboshake = { version = "=0.1.4", features = ["dev"] }
+rayon = { version = "=1.7.0", optional = true }
+num_cpus = { version = "=1.15.0", optional = true }
+
+[features]
+multi_threaded = ["dep:rayon", "dep:num_cpus"]
 
 [dev-dependencies]
 hex = "0.4.3"
