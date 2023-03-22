@@ -1,6 +1,16 @@
 # kangarootwelve
 BlaKE12: Blazing-fast KEccak on 12 rounds
 
+## Prerequisites
+
+Rust stable toolchain; see https://rustup.rs for installation guide.
+
+```bash
+# When developing this library, I was using
+$ rustc --version
+rustc 1.68.0 (2c8cc3432 2023-03-06)
+```
+
 ## Testing
 
 For ensuring functional correctness of KangarooTwelve XOF's single threaded implementation, I use test vectors from section 4 ( on page 9 ) and Appendix A ( on page 17 ) of https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve. Issue following command to run test cases.
@@ -16,6 +26,8 @@ Issue following command for benchmarking KangarooTwelve extendable output functi
 ```bash
 RUSTFLAGS="-C opt-level=3 -C target-cpu=native" cargo bench
 ```
+
+### On **Intel(R) Core(TM) i5-8279U CPU @ 2.40GHz**
 
 ```bash
 K12/32/32 (cached)      time:   [430.62 ns 432.65 ns 434.95 ns]
@@ -158,4 +170,61 @@ K12/8388608/32 (random) time:   [9.8046 ms 9.8351 ms 9.8681 ms]
                         thrpt:  [810.69 MiB/s 813.41 MiB/s 815.95 MiB/s]
 Found 4 outliers among 100 measurements (4.00%)
   4 (4.00%) high mild
+```
+
+## Usage
+
+Getting started with using KangarooTwelve extendable output function API is pretty easy
+
+1) Add `kangarootwelve` as project dependency in your `Cargo.toml` file
+
+```toml
+[dependencies]
+# either
+kangarootwelve = { git = "https://github.com/itzmeanjan/kangarootwelve" }
+# or
+kangarootwelve = "0.1.0"
+```
+
+2) Right now KangarooTwelve offers only non-incremental absorption API, so absorb message and customization string into sponge state using `hash()` function, which returns an XOF object, holding sponge in its finalized state.
+
+```rust
+use kangarootwelve::KangarooTwelve;
+use rand::{thread_rng, RngCore};
+
+fn main() {
+  const MLEN: usize = 64;
+  const CSTRLEN: usize = 1;
+  const DLEN: usize = 32;
+
+  let mut msg = vec![0u8; MLEN];
+  let mut cstr = vec![0u8; CSTRLEN]; // you can keep it empty
+  let mut dig = vec![0u8; DLEN];
+
+  let mut rng = thread_rng();
+  rng.fill_bytes(&mut msg);
+  cstr[0] = 0xff;
+
+  let mut hasher = KangarooTwelve::hash(&msg, &cstr);
+  // ...
+}
+```
+
+3) Sponge is ready to be squeezed i.e. now you can use returned XOF object for squeezing arbitrary number of bytes arbitrary number of times.
+
+```rust
+hasher.squeeze(&mut dig[..DLEN / 2]);
+hasher.squeeze(&mut dig[DLEN / 2..]);
+```
+
+I maintain following example, demonstrating usage of KangarooTwelve eXtendable Output Function (XOF).
+
+- [k12](./examples/k12.rs)
+
+```
+cargo run --release --example k12
+
+Message              = 03959c2ffc95ac27dbf150fa1bbd4eebeaf531cf5bfd93680a197453350260ca86d78ba9376c8bf55350a7b695f473c486853d955de5eef456a7bc14d22316c5
+Customization String = ff
+Digest               = 1ab580fbc34d1e49d4c6b1b34b8e9d6b25e0ee60185559e3c7384e5c15629781
 ```
