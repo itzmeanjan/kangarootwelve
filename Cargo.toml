@@ -2,8 +2,14 @@
 name = "kangarootwelve"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Anjan Roy <hello@itzmeanjan.in>"]
+description = "BlaKE12: Blazing-fast KEccak on 12 rounds"
+documentation = "https://github.com/itzmeanjan/kangarootwelve"
+readme = "README.md"
+repository = "https://github.com/itzmeanjan/kangarootwelve.git"
+license = "MIT"
+keywords = ["keccak", "xof", "turboshake", "kangarootwelve", "k12"]
+categories = ["cryptography"]
 
 [dependencies]
 turboshake = { version = "=0.1.4", features = ["dev"]}
