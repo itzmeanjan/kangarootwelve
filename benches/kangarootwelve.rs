@@ -6,7 +6,7 @@ fn k12<const MLEN: usize, const CSTRLEN: usize, const DLEN: usize>(c: &mut Crite
     let mut rng = thread_rng();
 
     let mut group = c.benchmark_group("K12");
-    group.throughput(Throughput::Bytes(MLEN as u64));
+    group.throughput(Throughput::Bytes((MLEN + CSTRLEN) as u64));
 
     group.bench_function(&format!("{}/{} (cached)", MLEN, DLEN), |bench| {
         let mut msg = vec![0u8; MLEN];
@@ -42,5 +42,5 @@ fn k12<const MLEN: usize, const CSTRLEN: usize, const DLEN: usize>(c: &mut Crite
     group.finish();
 }
 
-criterion_group!(kangarootwelve, k12<32, 0, 32>);
+criterion_group!(kangarootwelve, k12<32, 0, 32>, k12<64, 0, 32>, k12<128, 0, 32>, k12<256, 0, 32>, k12<512, 0, 32>, k12<{1*(1 << 10)}, 0, 32>, k12<{2*(1 << 10)}, 0, 32>, k12<{4*(1 << 10)}, 0, 32>, k12<{8*(1 << 10)}, 0, 32>, k12<{1*(1 << 20)}, 0, 32>, k12<{2*(1 << 20)}, 0, 32>, k12<{4*(1 << 20)}, 0, 32>, k12<{8*(1 << 20)}, 0, 32>);
 criterion_main!(kangarootwelve);
