@@ -10,3 +10,12 @@ turboshake = { version = "=0.1.4", features = ["dev"]}
 
 [dev-dependencies]
 hex = "0.4.3"
+criterion = "0.4.0"
+rand = "0.8.5"
+
+[lib]
+bench = false
+
+[[bench]]
+name = "kangarootwelve"
+harness = false
