@@ -232,7 +232,7 @@ impl KangarooTwelve {
                 &PAD_A,
             );
 
-            let cpus = num_cpus::get();
+            let cpus = cmp::min(num_cpus::get(), n - 1);
             let pool = ThreadPoolBuilder::new().num_threads(cpus).build().unwrap();
             let cvs = pool.install(|| {
                 let mut cvs = vec![0u8; (n - 1) * 32];
