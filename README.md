@@ -1,6 +1,12 @@
 # kangarootwelve
 BlaKE12: Blazing-fast KEccak on 12 rounds
 
+## Overview
+
+KangarooTwelve is a fast and secure arbitrary output-length hash function which performs much better than hash and extendable output functions specified on FIPS 202 ( more @ https://dx.doi.org/10.6028/NIST.FIPS.202 ). KangarooTwelve ( aka K12 or BlaKE12 - see more @ https://blake12.org ) is built on top of round-reduced keccak-p[1600, 12] permutation. To be more specific KangarooTwelve can be implemented on top of TurboSHAKE - which is a family of extendable output functions, recently specified on https://ia.cr/2023/342. The sponge mode of KangarooTwelve uses 256 -bit wide capacity i.e. it uses TurboSHAKE128 as underlying construction. K12 possesses a built-in parallel hashing mode for long ( >=8KB ) messages which can efficiently be exploited by multiple-cores or SIMD instructions. Another important gain of K12 is that its parallel design doesn't impact performance when hashing short ( <8KB ) messages. KangarooTwelve is specified on https://keccak.team/files/KangarooTwelve.pdf.
+
+Here I'm developing/ maintaining a Rust library which implements KangarooTwelve specification s.t. it implements non-incremental absorption API with arbitrary times squeeze support. Note, this library doesn't **yet** exploit parallel design of K12's construction - it's something I'm working on. In coming weeks, I also plan to support incremental hashing API i.e. one can construct a K12 hasher object for absorbing message bytes arbitrary many times, then finalize before squeezing bytes out of sponge state. See [below](#usage) for example, showing usage of K12 XOF API.
+
 ## Prerequisites
 
 Rust stable toolchain; see https://rustup.rs for installation guide.
