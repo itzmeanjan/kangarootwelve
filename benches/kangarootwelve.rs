@@ -1,4 +1,4 @@
-use kangarootwelve::KangarooTwelve;
+use kangarootwelve::KT128;
 use rand::Rng;
 use std::{fmt::Debug, time::Duration};
 
@@ -77,7 +77,7 @@ fn k12(bencher: divan::Bencher, k12_config: &K12Config) {
         .counter(divan::counter::BytesCount::new(k12_config.msg_byte_len + k12_config.digest_byte_len))
         .with_inputs(|| vec![0u8; k12_config.digest_byte_len])
         .bench_refs(|digest| {
-            let mut hasher = KangarooTwelve::hash(divan::black_box(&msg), divan::black_box(&[]));
+            let mut hasher = KT128::hash(divan::black_box(&msg), divan::black_box(&[]));
             hasher.squeeze(divan::black_box(digest));
         });
 }

@@ -5,17 +5,17 @@ use turboshake::{TurboShake128, sponge};
 #[cfg(feature = "multi_threaded")]
 use rayon::{ThreadPoolBuilder, prelude::*};
 
-/// KangarooTwelve Extendable Output Function (XOF)
+/// KT128 Extendable Output Function (XOF)
 ///
-/// See https://keccak.team/files/KangarooTwelve.pdf
+/// See <https://keccak.team/files/KangarooTwelve.pdf> and <https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve>
 #[derive(Copy, Clone)]
-pub struct KangarooTwelve {
+pub struct KT128 {
     state: [u64; 25],
     is_ready: usize,
     squeezable: usize,
 }
 
-impl KangarooTwelve {
+impl KT128 {
     const CAPACITY_BITS: usize = 256;
     const RATE_BITS: usize = 1600 - Self::CAPACITY_BITS;
     const RATE_BYTES: usize = Self::RATE_BITS / 8;
@@ -81,10 +81,10 @@ impl KangarooTwelve {
 
     /// Given message (M) and customization string (C, which can be used for domain seperation)
     /// this routine consumes both of them into Keccak\[256\] sponge state, using single thread,
-    /// in chunks of B -bytes s.t. returned K12 object can be used for squeezing arbitrary number
+    /// in chunks of B -bytes s.t. returned KT128 object can be used for squeezing arbitrary number
     /// of bytes from sponge state.
     ///
-    /// This is a single-threaded implementation of the K12 tree hash mode, as described in section 3.3
+    /// This is a single-threaded implementation of the KT128 tree hash mode, as described in section 3.3
     /// of the specification https://keccak.team/files/KangarooTwelve.pdf. You haven't configured this library
     /// crate to use `multi_threaded` feature.
     ///
@@ -149,9 +149,9 @@ impl KangarooTwelve {
     /// Given message (M) and customization string (C, which can be used for domain seperation)
     /// this routine consumes both of them into Keccak\[256\] sponge state, using multiple threads i.e.
     /// equals to # -of logical cores supported by execution environment, in chunks of B -bytes s.t.
-    /// returned K12 object can be used for squeezing arbitrary number of bytes from sponge state.
+    /// returned KT128 object can be used for squeezing arbitrary number of bytes from sponge state.
     ///
-    /// This is a multi-threaded implementation of the K12 tree hash mode, as described in section 3.3
+    /// This is a multi-threaded implementation of the KT128 tree hash mode, as described in section 3.3
     /// of the specification https://keccak.team/files/KangarooTwelve.pdf. You're using this function because
     /// you have configured this library crate to use `multi_threaded` feature.
     ///
@@ -226,11 +226,6 @@ impl KangarooTwelve {
     ///
     /// Note, this routine can be called arbitrary number of times, for squeezing arbitrary
     /// number of bytes from sponge Keccak\[256\].
-    ///
-    /// Make sure you absorb message bytes first, then only call this function, otherwise
-    /// it can't squeeze anything out.
-    ///
-    /// Adapted from https://github.com/itzmeanjan/turboshake/blob/81243e8e/src/turboshake128.rs#L87-L109
     #[inline(always)]
     pub fn squeeze(&mut self, out: &mut [u8]) {
         if self.is_ready != usize::MAX {

@@ -1,5 +1,5 @@
-mod kangarootwelve;
+mod kt128;
 mod tests;
 mod utils;
 
-pub use kangarootwelve::KangarooTwelve;
+pub use kt128::KT128;
