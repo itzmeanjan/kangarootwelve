@@ -70,18 +70,14 @@ const ARGS: &[K12Config] = &[
 
 #[divan::bench(args = ARGS, max_time = Duration::from_secs(100), skip_ext_time = true)]
 fn k12(bencher: divan::Bencher, k12_config: &K12Config) {
+    let mut rng = rand::thread_rng();
+    let msg = (0..k12_config.msg_byte_len).map(|_| rng.r#gen()).collect::<Vec<u8>>();
+
     bencher
         .counter(divan::counter::BytesCount::new(k12_config.msg_byte_len + k12_config.digest_byte_len))
-        .with_inputs(|| {
-            let mut rng = rand::thread_rng();
-
-            let msg = (0..k12_config.msg_byte_len).map(|_| rng.r#gen()).collect::<Vec<u8>>();
-            let dig = vec![0u8; k12_config.digest_byte_len];
-
-            (msg, dig)
-        })
-        .bench_refs(|(msg, dig)| {
-            let mut hasher = KangarooTwelve::hash(divan::black_box(msg), divan::black_box(&[]));
-            hasher.squeeze(divan::black_box(dig));
+        .with_inputs(|| vec![0u8; k12_config.digest_byte_len])
+        .bench_refs(|digest| {
+            let mut hasher = KangarooTwelve::hash(divan::black_box(&msg), divan::black_box(&[]));
+            hasher.squeeze(divan::black_box(digest));
         });
 }
