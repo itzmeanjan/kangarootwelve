@@ -1,5 +1,4 @@
 use crate::{KT128, KT256};
-use std::cmp;
 
 /// Generates static byte pattern of length 251, following
 /// https://www.ietf.org/archive/id/draft-irtf-cfrg-kangarootwelve-17.html#name-test-vectors
@@ -16,16 +15,7 @@ fn pattern() -> [u8; 251] {
 /// Taken from https://github.com/itzmeanjan/turboshake/blob/81243e8e/src/tests.rs#L11-L25
 #[allow(dead_code)]
 fn ptn(n: usize) -> Vec<u8> {
-    let mut res = vec![0; n];
-
-    let mut off = 0;
-    while off < n {
-        let read = cmp::min(n - off, 251);
-        res[off..(off + read)].copy_from_slice(&pattern()[..read]);
-        off += read;
-    }
-
-    res
+    (0..(n.div_ceil(251))).flat_map(|_| pattern()).take(n).collect::<Vec<u8>>()
 }
 
 /// Helper function for computing KT128 digest ( of length olen -bytes ) for some (M, C) pair.
