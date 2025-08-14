@@ -32,3 +32,17 @@ bench = false
 [[bench]]
 name = "kangarootwelve"
 harness = false
+
+[profile.optimized]
+inherits = "release"
+codegen-units = 1
+lto = true
+panic = "abort"
+opt-level = 3
+
+[profile.test-release]
+inherits = "release"
+debug = true
+debug-assertions = true
+overflow-checks = true
+opt-level = 3
