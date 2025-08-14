@@ -7,7 +7,7 @@ use std::cmp;
 /// Taken from https://github.com/itzmeanjan/turboshake/blob/81243e8e/src/tests.rs#L4-L9
 #[allow(dead_code)]
 fn pattern() -> [u8; 251] {
-    (0..251).map(|i| i).collect::<Vec<u8>>().try_into().unwrap()
+    (0..251).collect::<Vec<u8>>().try_into().unwrap()
 }
 
 /// Generates bytearray of length n by repeating static byte pattern returned by `pattern()`,

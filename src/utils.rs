@@ -13,7 +13,7 @@ pub fn length_encode(x: usize) -> ([u8; core::mem::size_of::<usize>() + 1], usiz
     let mut res = [0u8; core::mem::size_of::<usize>() + 1];
 
     let bw = usize::MAX.count_ones() - x.leading_zeros();
-    let l = ((bw + 7) / 8) as usize;
+    let l = bw.div_ceil(8) as usize;
 
     for i in 0..l {
         res[l - i - 1] = (x >> (i * 8)) as u8;
