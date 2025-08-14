@@ -1,5 +1,5 @@
 use kangarootwelve::KangarooTwelve;
-use rand::{thread_rng, RngCore};
+use rand::{RngCore, thread_rng};
 
 fn main() {
     const MLEN: usize = 64;

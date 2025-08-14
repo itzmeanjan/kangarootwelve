@@ -1,9 +1,9 @@
 use crate::utils::length_encode;
 use std::cmp;
-use turboshake::{sponge, TurboShake128};
+use turboshake::{TurboShake128, sponge};
 
 #[cfg(feature = "multi_threaded")]
-use rayon::{prelude::*, ThreadPoolBuilder};
+use rayon::{ThreadPoolBuilder, prelude::*};
 
 /// KangarooTwelve Extendable Output Function (XOF)
 ///
@@ -101,15 +101,8 @@ impl KangarooTwelve {
 
             let (chunk, clen) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &chunk[..clen],
-            );
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(
-                &mut state,
-                &mut offset,
-            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk[..clen]);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(&mut state, &mut offset);
 
             Self {
                 state,
@@ -124,16 +117,8 @@ impl KangarooTwelve {
             const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
             const PAD_B: [u8; 2] = [0xff, 0xff];
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &chunk,
-            );
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &PAD_A,
-            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk);
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_A);
 
             for i in 1..n {
                 let (chunk, clen) = Self::get_ith_chunk(i, msg, cstr, &enc[..elen]);
@@ -144,29 +129,14 @@ impl KangarooTwelve {
                 hasher.finalize::<{ Self::D_SEP_B }>();
                 hasher.squeeze(&mut cv);
 
-                sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                    &mut state,
-                    &mut offset,
-                    &cv,
-                );
+                sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &cv);
             }
 
             let (enc, elen) = length_encode(n - 1);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &enc[..elen],
-            );
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &PAD_B,
-            );
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(
-                &mut state,
-                &mut offset,
-            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &enc[..elen]);
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_B);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(&mut state, &mut offset);
 
             Self {
                 state,
@@ -198,15 +168,8 @@ impl KangarooTwelve {
 
             let (chunk, clen) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &chunk[..clen],
-            );
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(
-                &mut state,
-                &mut offset,
-            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk[..clen]);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(&mut state, &mut offset);
 
             Self {
                 state,
@@ -221,16 +184,8 @@ impl KangarooTwelve {
             const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
             const PAD_B: [u8; 2] = [0xff, 0xff];
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &chunk,
-            );
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &PAD_A,
-            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk);
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_A);
 
             let cpus = cmp::min(num_cpus::get(), n - 1);
             let pool = ThreadPoolBuilder::new().num_threads(cpus).build().unwrap();
@@ -249,28 +204,13 @@ impl KangarooTwelve {
                 cvs
             });
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &cvs,
-            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &cvs);
 
             let (enc, elen) = length_encode(n - 1);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &enc[..elen],
-            );
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-                &mut state,
-                &mut offset,
-                &PAD_B,
-            );
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(
-                &mut state,
-                &mut offset,
-            );
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &enc[..elen]);
+            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_B);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(&mut state, &mut offset);
 
             Self {
                 state,
@@ -297,10 +237,6 @@ impl KangarooTwelve {
             return;
         }
 
-        sponge::squeeze::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(
-            &mut self.state,
-            &mut self.squeezable,
-            out,
-        );
+        sponge::squeeze::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut self.state, &mut self.squeezable, out);
     }
 }

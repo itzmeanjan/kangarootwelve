@@ -1,6 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use kangarootwelve::KangarooTwelve;
-use rand::{thread_rng, RngCore};
+use rand::{RngCore, thread_rng};
 
 fn k12<const MLEN: usize, const CSTRLEN: usize, const DLEN: usize>(c: &mut Criterion) {
     let mut rng = thread_rng();
