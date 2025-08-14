@@ -1,7 +1,9 @@
 [package]
 name = "kangarootwelve"
 version = "0.1.2"
-edition = "2021"
+edition = "2024"
+resolver = "3"
+rust-version = "1.85.0"
 authors = ["Anjan Roy <hello@itzmeanjan.in>"]
 description = "BlaKE12: Blazing-fast KEccak on 12 rounds"
 documentation = "https://github.com/itzmeanjan/kangarootwelve"
@@ -13,20 +15,31 @@ categories = ["cryptography"]
 
 [dependencies]
 turboshake = { version = "=0.1.4", features = ["dev"] }
-rayon = { version = "=1.7.0", optional = true }
-num_cpus = { version = "=1.15.0", optional = true }
+rayon = { version = "=1.11.0", optional = true }
+num_cpus = { version = "=1.17.0", optional = true }
+
+[dev-dependencies]
+const-hex = "=1.14.1"
+divan = "=0.1.21"
+rand = "=0.9.2"
 
 [features]
 multi_threaded = ["dep:rayon", "dep:num_cpus"]
 
-[dev-dependencies]
-hex = "0.4.3"
-criterion = "0.4.0"
-rand = "0.8.5"
-
-[lib]
-bench = false
-
 [[bench]]
 name = "kangarootwelve"
 harness = false
+
+[profile.optimized]
+inherits = "release"
+codegen-units = 1
+lto = true
+panic = "abort"
+opt-level = 3
+
+[profile.test-release]
+inherits = "release"
+debug = true
+debug-assertions = true
+overflow-checks = true
+opt-level = 3

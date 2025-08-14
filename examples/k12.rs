@@ -1,5 +1,5 @@
 use kangarootwelve::KangarooTwelve;
-use rand::{thread_rng, RngCore};
+use rand::RngCore;
 
 fn main() {
     const MLEN: usize = 64;
@@ -10,7 +10,7 @@ fn main() {
     let mut cstr = vec![0u8; CSTRLEN];
     let mut dig = vec![0u8; DLEN];
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     rng.fill_bytes(&mut msg);
     cstr[0] = 0xff;
 
@@ -18,7 +18,7 @@ fn main() {
     hasher.squeeze(&mut dig[..DLEN / 2]);
     hasher.squeeze(&mut dig[DLEN / 2..]);
 
-    println!("Message              = {}", hex::encode(&msg));
-    println!("Customization String = {}", hex::encode(&cstr));
-    println!("Digest               = {}", hex::encode(&dig));
+    println!("Message              = {}", const_hex::encode(&msg));
+    println!("Customization String = {}", const_hex::encode(&cstr));
+    println!("Digest               = {}", const_hex::encode(&dig));
 }
