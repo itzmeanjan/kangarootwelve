@@ -13,7 +13,7 @@ pub fn length_encode(x: usize) -> ([u8; core::mem::size_of::<usize>() + 1], usiz
     let mut res = [0u8; core::mem::size_of::<usize>() + 1];
 
     let bw = usize::MAX.count_ones() - x.leading_zeros();
-    let l = ((bw + 7) / 8) as usize;
+    let l = bw.div_ceil(8) as usize;
 
     for i in 0..l {
         res[l - i - 1] = (x >> (i * 8)) as u8;
@@ -21,4 +21,24 @@ pub fn length_encode(x: usize) -> ([u8; core::mem::size_of::<usize>() + 1], usiz
     res[l] = l as u8;
 
     (res, l + 1)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::utils::length_encode;
+
+    #[test]
+    fn test_length_encode() {
+        let (enc, len) = length_encode(0);
+        assert_eq!(enc[..len], [0x00]);
+
+        let (enc, len) = length_encode(1);
+        assert_eq!(enc[..len], [0x01, 0x01]);
+
+        let (enc, len) = length_encode(12);
+        assert_eq!(enc[..len], [0x0c, 0x01]);
+
+        let (enc, len) = length_encode(65538);
+        assert_eq!(enc[..len], [0x01, 0x00, 0x02, 0x03]);
+    }
 }

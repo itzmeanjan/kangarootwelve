@@ -1,22 +1,22 @@
 use crate::utils::length_encode;
 use std::cmp;
-use turboshake::{TurboShake128, sponge};
+use turboshake::{TurboShake256, sponge};
 
 #[cfg(feature = "multi_threaded")]
 use rayon::{ThreadPoolBuilder, prelude::*};
 
-/// KangarooTwelve Extendable Output Function (XOF)
+/// KT256 Extendable Output Function (XOF)
 ///
-/// See https://keccak.team/files/KangarooTwelve.pdf
+/// See <https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve>
 #[derive(Copy, Clone)]
-pub struct KangarooTwelve {
+pub struct KT256 {
     state: [u64; 25],
     is_ready: usize,
     squeezable: usize,
 }
 
-impl KangarooTwelve {
-    const CAPACITY_BITS: usize = 256;
+impl KT256 {
+    const CAPACITY_BITS: usize = 512;
     const RATE_BITS: usize = 1600 - Self::CAPACITY_BITS;
     const RATE_BYTES: usize = Self::RATE_BITS / 8;
     const RATE_WORDS: usize = Self::RATE_BYTES / 8;
@@ -80,20 +80,20 @@ impl KangarooTwelve {
     }
 
     /// Given message (M) and customization string (C, which can be used for domain seperation)
-    /// this routine consumes both of them into Keccak\[256\] sponge state, using single thread,
-    /// in chunks of B -bytes s.t. returned K12 object can be used for squeezing arbitrary number
+    /// this routine consumes both of them into Keccak\[512\] sponge state, using single thread,
+    /// in chunks of B -bytes s.t. returned KT256 object can be used for squeezing arbitrary number
     /// of bytes from sponge state.
     ///
-    /// This is a single-threaded implementation of the K12 tree hash mode, as described in section 3.3
-    /// of the specification https://keccak.team/files/KangarooTwelve.pdf. You haven't configured this library
-    /// crate to use `multi_threaded` feature.
+    /// This is a single-threaded implementation of the KT256 tree hash mode, as described in section 3.4
+    /// of the specification https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve. You haven't
+    /// configured this library crate to use `multi_threaded` feature.
     ///
     /// You can use this function for oneshot hashing i.e. when all the input bytes are ready to be consumed.
     #[cfg(not(feature = "multi_threaded"))]
     pub fn hash(msg: &[u8], cstr: &[u8]) -> Self {
         let (enc, elen) = length_encode(cstr.len());
         let tlen = msg.len() + cstr.len() + elen;
-        let n = (tlen + (Self::B - 1)) / Self::B;
+        let n = tlen.div_ceil(Self::B);
 
         if n == 1 {
             let mut state = [0u64; 25];
@@ -122,9 +122,9 @@ impl KangarooTwelve {
 
             for i in 1..n {
                 let (chunk, clen) = Self::get_ith_chunk(i, msg, cstr, &enc[..elen]);
-                let mut cv = [0u8; 32];
+                let mut cv = [0u8; 64];
 
-                let mut hasher = TurboShake128::new();
+                let mut hasher = TurboShake256::new();
                 hasher.absorb(&chunk[..clen]);
                 hasher.finalize::<{ Self::D_SEP_B }>();
                 hasher.squeeze(&mut cv);
@@ -147,13 +147,13 @@ impl KangarooTwelve {
     }
 
     /// Given message (M) and customization string (C, which can be used for domain seperation)
-    /// this routine consumes both of them into Keccak\[256\] sponge state, using multiple threads i.e.
+    /// this routine consumes both of them into Keccak\[512\] sponge state, using multiple threads i.e.
     /// equals to # -of logical cores supported by execution environment, in chunks of B -bytes s.t.
-    /// returned K12 object can be used for squeezing arbitrary number of bytes from sponge state.
+    /// returned KT256 object can be used for squeezing arbitrary number of bytes from sponge state.
     ///
-    /// This is a multi-threaded implementation of the K12 tree hash mode, as described in section 3.3
-    /// of the specification https://keccak.team/files/KangarooTwelve.pdf. You're using this function because
-    /// you have configured this library crate to use `multi_threaded` feature.
+    /// This is a multi-threaded implementation of the KT256 tree hash mode, as described in section 3.4
+    /// of the specification https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve. You're using
+    /// this function because you have configured this library crate to use `multi_threaded` feature.
     ///
     /// You can use this function for oneshot hashing i.e. when all the input bytes are ready to be consumed.
     #[cfg(feature = "multi_threaded")]
@@ -190,12 +190,12 @@ impl KangarooTwelve {
             let cpus = cmp::min(num_cpus::get(), n - 1);
             let pool = ThreadPoolBuilder::new().num_threads(cpus).build().unwrap();
             let cvs = pool.install(|| {
-                let mut cvs = vec![0u8; (n - 1) * 32];
+                let mut cvs = vec![0u8; (n - 1) * 64];
 
-                cvs.par_chunks_mut(32).enumerate().for_each(|(i, cv)| {
+                cvs.par_chunks_mut(64).enumerate().for_each(|(i, cv)| {
                     let (chunk, clen) = Self::get_ith_chunk(i + 1, msg, cstr, &enc[..elen]);
 
-                    let mut hasher = TurboShake128::new();
+                    let mut hasher = TurboShake256::new();
                     hasher.absorb(&chunk[..clen]);
                     hasher.finalize::<{ Self::D_SEP_B }>();
                     hasher.squeeze(cv);
@@ -225,12 +225,7 @@ impl KangarooTwelve {
     /// consumable part of the sponge state ( i.e. rate portion of the state ).
     ///
     /// Note, this routine can be called arbitrary number of times, for squeezing arbitrary
-    /// number of bytes from sponge Keccak\[256\].
-    ///
-    /// Make sure you absorb message bytes first, then only call this function, otherwise
-    /// it can't squeeze anything out.
-    ///
-    /// Adapted from https://github.com/itzmeanjan/turboshake/blob/81243e8e/src/turboshake128.rs#L87-L109
+    /// number of bytes from sponge Keccak\[512\].
     #[inline(always)]
     pub fn squeeze(&mut self, out: &mut [u8]) {
         if self.is_ready != usize::MAX {
