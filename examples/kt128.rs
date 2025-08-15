@@ -1,4 +1,4 @@
-use kangarootwelve::KangarooTwelve;
+use kangarootwelve::KT128;
 use rand::RngCore;
 
 fn main() {
@@ -14,10 +14,11 @@ fn main() {
     rng.fill_bytes(&mut msg);
     cstr[0] = 0xff;
 
-    let mut hasher = KangarooTwelve::hash(&msg, &cstr);
+    let mut hasher = KT128::hash(&msg, &cstr);
     hasher.squeeze(&mut dig[..DLEN / 2]);
     hasher.squeeze(&mut dig[DLEN / 2..]);
 
+    println!("Using KT128");
     println!("Message              = {}", const_hex::encode(&msg));
     println!("Customization String = {}", const_hex::encode(&cstr));
     println!("Digest               = {}", const_hex::encode(&dig));

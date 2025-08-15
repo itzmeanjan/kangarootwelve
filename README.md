@@ -3,7 +3,12 @@ BlaKE12: Blazing-fast KEccak on 12 rounds
 
 ## Overview
 
-KangarooTwelve is a fast and secure arbitrary output-length hash function which performs much better than hash and extendable output functions specified on FIPS 202 ( more @ https://dx.doi.org/10.6028/NIST.FIPS.202 ). KangarooTwelve ( aka K12 or BlaKE12 - see more @ https://blake12.org ) is built on top of round-reduced keccak-p[1600, 12] permutation. To be more specific KangarooTwelve can be implemented on top of TurboSHAKE - which is a family of extendable output functions, recently specified on https://ia.cr/2023/342. The sponge mode of KangarooTwelve uses 256 -bit wide capacity i.e. it can use TurboSHAKE128 as underlying construction. K12 possesses a built-in parallel hashing mode for long ( >=8KB ) messages which can efficiently be exploited by multiple-cores or SIMD instructions. Another important gain of K12 is that its parallel design doesn't impact performance when hashing short ( <8KB ) messages. KangarooTwelve is specified on https://keccak.team/files/KangarooTwelve.pdf.
+KangarooTwelve is a family of fast and secure arbitrary output-length hash functions which performs much better than hash and extendable output functions specified on FIPS 202 ( more @ https://dx.doi.org/10.6028/NIST.FIPS.202 ). KangarooTwelve ( aka K12 or BlaKE12 - see more @ https://blake12.org ) is built on top of round-reduced keccak-p[1600, 12] permutation. To be more specific KangarooTwelve can be implemented on top of TurboSHAKE - which is a family of extendable output functions, recently specified on https://ia.cr/2023/342. KangarooTwelve offers two instances
+
+- KT128, uses TurboSHAKE128 as underlying chunk hasher.
+- KT256, uses TurboSHAKE256 as underlying chunk hasher.
+
+K12 possesses a built-in parallel tree hashing mode (using SAKURA coding) for long ( >=8KB ) messages which can efficiently be exploited by multiple-cores or SIMD instructions. Another important gain of K12 is that its parallel design doesn't impact performance when hashing short ( <8KB ) messages. Originally KangarooTwelve (which is now renamed to KT128) was specified on https://keccak.team/files/KangarooTwelve.pdf. The latest specification, defining both KT128 and KT256 can be found @ https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve.
 
 Here I'm developing/ maintaining a Rust library which implements KangarooTwelve specification s.t. it implements non-incremental absorption API with arbitrary times squeeze support. In coming weeks, I plan to support incremental hashing API i.e. one can construct a K12 hasher object for absorbing message bytes arbitrary many times, then finalize using customization string, before squeezing bytes out of sponge state. See [below](#usage) for example, showing usage of K12 XOF API.
 
@@ -19,7 +24,7 @@ rustc 1.89.0 (29483883e 2025-08-04)
 
 ## Testing
 
-For ensuring functional correctness of KangarooTwelve XOF's implementation, I use test vectors from section 4 ( on page 9 ) and Appendix A ( on page 17 ) of https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve. Issue following command to run test cases.
+For ensuring functional correctness of KangarooTwelve family of XOF implementation, I use test vectors from section 5 (on page 12) of https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve. Issue following command to run all tests.
 
 ```bash
 # Testing on host, first with `default` feature, then with `multi_threaded` feature enabled.
@@ -35,7 +40,7 @@ make test-wasm
 
 ## Benchmarking
 
-Issue following command for benchmarking KangarooTwelve extendable output function's (XOF) implementation, for varying input sizes and fixed squeezed output size ( = 32 -bytes ).
+Issue following command for benchmarking KangarooTwelve family of extendable output functions (XOF), for varying input sizes.
 
 ```bash
 make bench # First runs with `default` feature, then with `multi_threaded` feature
@@ -52,47 +57,100 @@ Running benchmarks on `Linux 6.14.0-27-generic x86_64`, compiled with `rustc 1.8
 ```bash
 # With `default` feature - serial absorption of input message
 
-Timer precision: 23 ns
+Timer precision: 22 ns
 kangarootwelve                                            fastest       │ slowest       │ median        │ mean          │ samples │ iters
-╰─ k12                                                                  │               │               │               │         │
-   ├─ Hashing 1.00 GB message, producing 32.00 B digest   873.7 ms      │ 880.6 ms      │ 877.8 ms      │ 877.7 ms      │ 100     │ 100
-   │                                                      1.144 GiB/s   │ 1.135 GiB/s   │ 1.139 GiB/s   │ 1.139 GiB/s   │         │
-   ├─ Hashing 1.00 KB message, producing 32.00 B digest   1.164 µs      │ 3.577 µs      │ 1.23 µs       │ 1.281 µs      │ 100     │ 100
-   │                                                      864.5 MiB/s   │ 281.4 MiB/s   │ 818.1 MiB/s   │ 785.5 MiB/s   │         │
-   ├─ Hashing 1.00 MB message, producing 32.00 B digest   778.6 µs      │ 920.9 µs      │ 810.4 µs      │ 816.2 µs      │ 100     │ 100
-   │                                                      1.254 GiB/s   │ 1.06 GiB/s    │ 1.205 GiB/s   │ 1.196 GiB/s   │         │
-   ├─ Hashing 32.00 B message, producing 32.00 B digest   246.6 ns      │ 334.2 ns      │ 249.5 ns      │ 255.4 ns      │ 100     │ 1600
-   │                                                      247.5 MiB/s   │ 182.6 MiB/s   │ 244.5 MiB/s   │ 238.9 MiB/s   │         │
-   ├─ Hashing 32.00 KB message, producing 32.00 B digest  24.47 µs      │ 28.57 µs      │ 25.25 µs      │ 25.32 µs      │ 100     │ 100
-   │                                                      1.248 GiB/s   │ 1.068 GiB/s   │ 1.209 GiB/s   │ 1.206 GiB/s   │         │
-   ├─ Hashing 32.00 MB message, producing 32.00 B digest  26.77 ms      │ 27.79 ms      │ 27.17 ms      │ 27.21 ms      │ 100     │ 100
-   │                                                      1.167 GiB/s   │ 1.124 GiB/s   │ 1.149 GiB/s   │ 1.148 GiB/s   │         │
-   ╰─ Hashing 64.00 B message, producing 32.00 B digest   258.9 ns      │ 446.8 ns      │ 276.6 ns      │ 284 ns        │ 100     │ 800
-                                                          353.5 MiB/s   │ 204.8 MiB/s   │ 330.9 MiB/s   │ 322.3 MiB/s   │         │
+├─ kt128                                                                │               │               │               │         │
+│  ├─ Hashing 1.00 GB message, producing 32.00 B digest   873.3 ms      │ 880.3 ms      │ 876.6 ms      │ 876.5 ms      │ 100     │ 100
+│  │                                                      1.145 GiB/s   │ 1.135 GiB/s   │ 1.14 GiB/s    │ 1.14 GiB/s    │         │
+│  ├─ Hashing 1.00 KB message, producing 32.00 B digest   1.157 µs      │ 3.5 µs        │ 1.233 µs      │ 1.281 µs      │ 100     │ 100
+│  │                                                      869.7 MiB/s   │ 287.6 MiB/s   │ 816.1 MiB/s   │ 785.6 MiB/s   │         │
+│  ├─ Hashing 1.00 MB message, producing 32.00 B digest   778.8 µs      │ 943.4 µs      │ 837.2 µs      │ 833.2 µs      │ 100     │ 100
+│  │                                                      1.253 GiB/s   │ 1.035 GiB/s   │ 1.166 GiB/s   │ 1.172 GiB/s   │         │
+│  ├─ Hashing 32.00 B message, producing 32.00 B digest   255.6 ns      │ 413.6 ns      │ 305.6 ns      │ 299.6 ns      │ 100     │ 800
+│  │                                                      238.7 MiB/s   │ 147.5 MiB/s   │ 199.7 MiB/s   │ 203.7 MiB/s   │         │
+│  ├─ Hashing 32.00 KB message, producing 32.00 B digest  24.85 µs      │ 30.99 µs      │ 25.49 µs      │ 26.18 µs      │ 100     │ 100
+│  │                                                      1.228 GiB/s   │ 1009 MiB/s    │ 1.198 GiB/s   │ 1.166 GiB/s   │         │
+│  ├─ Hashing 32.00 MB message, producing 32.00 B digest  26.65 ms      │ 27.89 ms      │ 27.23 ms      │ 27.22 ms      │ 100     │ 100
+│  │                                                      1.172 GiB/s   │ 1.12 GiB/s    │ 1.147 GiB/s   │ 1.147 GiB/s   │         │
+│  ╰─ Hashing 64.00 B message, producing 32.00 B digest   263.9 ns      │ 352.8 ns      │ 339.5 ns      │ 320.9 ns      │ 100     │ 800
+│                                                         346.8 MiB/s   │ 259.4 MiB/s   │ 269.6 MiB/s   │ 285.2 MiB/s   │         │
+╰─ kt256                                                                │               │               │               │         │
+   ├─ Hashing 1.00 GB message, producing 32.00 B digest   1.093 s       │ 1.101 s       │ 1.096 s       │ 1.096 s       │ 92      │ 92
+   │                                                      936.6 MiB/s   │ 929.3 MiB/s   │ 934 MiB/s     │ 933.7 MiB/s   │         │
+   ├─ Hashing 1.00 KB message, producing 32.00 B digest   1.271 µs      │ 3.598 µs      │ 1.349 µs      │ 1.362 µs      │ 100     │ 100
+   │                                                      791.8 MiB/s   │ 279.8 MiB/s   │ 746 MiB/s     │ 739 MiB/s     │         │
+   ├─ Hashing 1.00 MB message, producing 32.00 B digest   990.7 µs      │ 1.152 ms      │ 1.014 ms      │ 1.026 ms      │ 100     │ 100
+   │                                                      1009 MiB/s    │ 867.7 MiB/s   │ 985.6 MiB/s   │ 974.6 MiB/s   │         │
+   ├─ Hashing 32.00 B message, producing 32.00 B digest   253.2 ns      │ 411.3 ns      │ 257.1 ns      │ 277.2 ns      │ 100     │ 800
+   │                                                      241 MiB/s     │ 148.3 MiB/s   │ 237.3 MiB/s   │ 220.1 MiB/s   │         │
+   ├─ Hashing 32.00 KB message, producing 32.00 B digest  31.16 µs      │ 36.36 µs      │ 31.93 µs      │ 32.44 µs      │ 100     │ 100
+   │                                                      1003 MiB/s    │ 860 MiB/s     │ 979.3 MiB/s   │ 964.1 MiB/s   │         │
+   ├─ Hashing 32.00 MB message, producing 32.00 B digest  33.58 ms      │ 34.88 ms      │ 34.19 ms      │ 34.22 ms      │ 100     │ 100
+   │                                                      952.8 MiB/s   │ 917.3 MiB/s   │ 935.6 MiB/s   │ 934.8 MiB/s   │         │
+   ╰─ Hashing 64.00 B message, producing 32.00 B digest   265.3 ns      │ 426.6 ns      │ 326.9 ns      │ 309.3 ns      │ 100     │ 800
+                                                          345 MiB/s     │ 214.6 MiB/s   │ 279.9 MiB/s   │ 295.9 MiB/s   │         │
 
 # With `multi_threaded` feature - Using `rayon` for data-parallel absorption of input message
 
-Timer precision: 23 ns
+Timer precision: 22 ns
 kangarootwelve                                            fastest       │ slowest       │ median        │ mean          │ samples │ iters
-╰─ k12                                                                  │               │               │               │         │
-   ├─ Hashing 1.00 GB message, producing 32.00 B digest   123.6 ms      │ 154.2 ms      │ 131.4 ms      │ 132.2 ms      │ 100     │ 100
-   │                                                      8.086 GiB/s   │ 6.482 GiB/s   │ 7.604 GiB/s   │ 7.559 GiB/s   │         │
-   │                                                      max alloc:    │               │               │               │         │
-   │                                                        167         │ 167           │ 167           │ 167           │         │
-   │                                                        54.98 KiB   │ 54.98 KiB     │ 54.98 KiB     │ 54.98 KiB     │         │
-   │                                                      alloc:        │               │               │               │         │
-   │                                                        184         │ 168           │ 168           │ 168.1         │         │
-   │                                                        72.49 KiB   │ 55.23 KiB     │ 55.23 KiB     │ 55.4 KiB      │         │
-   │                                                      dealloc:      │               │               │               │         │
-   │                                                        20          │ 4             │ 4             │ 4.16          │         │
-   │                                                        4.018 MiB   │ 4 MiB         │ 4 MiB         │ 4.001 MiB     │         │
-   │                                                      grow:         │               │               │               │         │
-   │                                                        3           │ 0             │ 0             │ 0.03          │         │
-   │                                                        288 B       │ 0 B           │ 0 B           │ 2.88 B        │         │
-   ├─ Hashing 1.00 KB message, producing 32.00 B digest   1.235 µs      │ 4.408 µs      │ 1.268 µs      │ 1.333 µs      │ 100     │ 100
-   │                                                      814.8 MiB/s   │ 228.4 MiB/s   │ 793.6 MiB/s   │ 755.4 MiB/s   │         │
-   ├─ Hashing 1.00 MB message, producing 32.00 B digest   414.2 µs      │ 1.152 ms      │ 585.8 µs      │ 607.3 µs      │ 100     │ 100
-   │                                                      2.357 GiB/s   │ 867.4 MiB/s   │ 1.667 GiB/s   │ 1.607 GiB/s   │         │
+├─ kt128                                                                │               │               │               │         │
+│  ├─ Hashing 1.00 GB message, producing 32.00 B digest   122 ms        │ 138.2 ms      │ 131.9 ms      │ 132.3 ms      │ 100     │ 100
+│  │                                                      8.196 GiB/s   │ 7.232 GiB/s   │ 7.581 GiB/s   │ 7.558 GiB/s   │         │
+│  │                                                      max alloc:    │               │               │               │         │
+│  │                                                        167         │ 167           │ 167           │ 167           │         │
+│  │                                                        54.98 KiB   │ 54.98 KiB     │ 54.98 KiB     │ 54.98 KiB     │         │
+│  │                                                      alloc:        │               │               │               │         │
+│  │                                                        184         │ 168           │ 168           │ 168.1         │         │
+│  │                                                        72.49 KiB   │ 55.23 KiB     │ 55.23 KiB     │ 55.4 KiB      │         │
+│  │                                                      dealloc:      │               │               │               │         │
+│  │                                                        20          │ 4             │ 4             │ 4.16          │         │
+│  │                                                        4.018 MiB   │ 4 MiB         │ 4 MiB         │ 4.001 MiB     │         │
+│  │                                                      grow:         │               │               │               │         │
+│  │                                                        3           │ 0             │ 0             │ 0.03          │         │
+│  │                                                        288 B       │ 0 B           │ 0 B           │ 2.88 B        │         │
+│  ├─ Hashing 1.00 KB message, producing 32.00 B digest   932.8 ns      │ 3.617 µs      │ 976.8 ns      │ 1.083 µs      │ 100     │ 100
+│  │                                                      1.054 GiB/s   │ 278.3 MiB/s   │ 1.006 GiB/s   │ 929.1 MiB/s   │         │
+│  ├─ Hashing 1.00 MB message, producing 32.00 B digest   402.4 µs      │ 1.519 ms      │ 574.4 µs      │ 602.2 µs      │ 100     │ 100
+│  │                                                      2.426 GiB/s   │ 658.1 MiB/s   │ 1.7 GiB/s     │ 1.621 GiB/s   │         │
+│  │                                                      max alloc:    │               │               │               │         │
+│  │                                                        167         │ 167           │ 167           │ 167           │         │
+│  │                                                        54.98 KiB   │ 54.98 KiB     │ 54.98 KiB     │ 54.98 KiB     │         │
+│  │                                                      alloc:        │               │               │               │         │
+│  │                                                        168         │ 168           │ 168           │ 168           │         │
+│  │                                                        55.23 KiB   │ 55.23 KiB     │ 55.23 KiB     │ 55.23 KiB     │         │
+│  │                                                      dealloc:      │               │               │               │         │
+│  │                                                        4           │ 4             │ 4             │ 4             │         │
+│  │                                                        5 KiB       │ 5 KiB         │ 5 KiB         │ 5 KiB         │         │
+│  ├─ Hashing 32.00 B message, producing 32.00 B digest   242.8 ns      │ 1.164 µs      │ 249.8 ns      │ 281.9 ns      │ 100     │ 200
+│  │                                                      251.3 MiB/s   │ 52.39 MiB/s   │ 244.2 MiB/s   │ 216.5 MiB/s   │         │
+│  ├─ Hashing 32.00 KB message, producing 32.00 B digest  73.71 µs      │ 276.3 µs      │ 118 µs        │ 114.8 µs      │ 100     │ 100
+│  │                                                      424.3 MiB/s   │ 113.1 MiB/s   │ 264.9 MiB/s   │ 272.3 MiB/s   │         │
+│  │                                                      max alloc:    │               │               │               │         │
+│  │                                                        47          │ 47            │ 47            │ 47            │         │
+│  │                                                        15.32 KiB   │ 15.32 KiB     │ 15.32 KiB     │ 15.32 KiB     │         │
+│  │                                                      alloc:        │               │               │               │         │
+│  │                                                        48          │ 48            │ 48            │ 48            │         │
+│  │                                                        15.39 KiB   │ 15.39 KiB     │ 15.39 KiB     │ 15.39 KiB     │         │
+│  │                                                      dealloc:      │               │               │               │         │
+│  │                                                        4           │ 4             │ 4             │ 4             │         │
+│  │                                                        384 B       │ 384 B         │ 384 B         │ 384 B         │         │
+│  ├─ Hashing 32.00 MB message, producing 32.00 B digest  3.803 ms      │ 5.816 ms      │ 4.663 ms      │ 4.641 ms      │ 100     │ 100
+│  │                                                      8.216 GiB/s   │ 5.373 GiB/s   │ 6.7 GiB/s     │ 6.733 GiB/s   │         │
+│  │                                                      max alloc:    │               │               │               │         │
+│  │                                                        167         │ 167           │ 167           │ 167           │         │
+│  │                                                        54.98 KiB   │ 54.98 KiB     │ 54.98 KiB     │ 54.98 KiB     │         │
+│  │                                                      alloc:        │               │               │               │         │
+│  │                                                        168         │ 168           │ 168           │ 168           │         │
+│  │                                                        55.23 KiB   │ 55.23 KiB     │ 55.23 KiB     │ 55.23 KiB     │         │
+│  │                                                      dealloc:      │               │               │               │         │
+│  │                                                        4           │ 4             │ 4             │ 4             │         │
+│  │                                                        129 KiB     │ 129 KiB       │ 129 KiB       │ 129 KiB       │         │
+│  ╰─ Hashing 64.00 B message, producing 32.00 B digest   356.8 ns      │ 26.03 µs      │ 365.8 ns      │ 654.7 ns      │ 100     │ 100
+│                                                         256.5 MiB/s   │ 3.516 MiB/s   │ 250.2 MiB/s   │ 139.8 MiB/s   │         │
+╰─ kt256                                                                │               │               │               │         │
+   ├─ Hashing 1.00 GB message, producing 32.00 B digest   155.6 ms      │ 175.2 ms      │ 163.6 ms      │ 164.8 ms      │ 100     │ 100
+   │                                                      6.425 GiB/s   │ 5.705 GiB/s   │ 6.109 GiB/s   │ 6.066 GiB/s   │         │
    │                                                      max alloc:    │               │               │               │         │
    │                                                        167         │ 167           │ 167           │ 167           │         │
    │                                                        54.98 KiB   │ 54.98 KiB     │ 54.98 KiB     │ 54.98 KiB     │         │
@@ -101,11 +159,24 @@ kangarootwelve                                            fastest       │ slow
    │                                                        55.23 KiB   │ 55.23 KiB     │ 55.23 KiB     │ 55.23 KiB     │         │
    │                                                      dealloc:      │               │               │               │         │
    │                                                        4           │ 4             │ 4             │ 4             │         │
-   │                                                        5 KiB       │ 5 KiB         │ 5 KiB         │ 5 KiB         │         │
-   ├─ Hashing 32.00 B message, producing 32.00 B digest   257.9 ns      │ 603.8 ns      │ 262.9 ns      │ 305.1 ns      │ 100     │ 800
-   │                                                      236.5 MiB/s   │ 101 MiB/s     │ 232.1 MiB/s   │ 200 MiB/s     │         │
-   ├─ Hashing 32.00 KB message, producing 32.00 B digest  80.11 µs      │ 236.7 µs      │ 123.5 µs      │ 126.1 µs      │ 100     │ 100
-   │                                                      390.4 MiB/s   │ 132.1 MiB/s   │ 253.1 MiB/s   │ 247.9 MiB/s   │         │
+   │                                                        8 MiB       │ 8 MiB         │ 8 MiB         │ 8 MiB         │         │
+   ├─ Hashing 1.00 KB message, producing 32.00 B digest   1.065 µs      │ 2.95 µs       │ 1.081 µs      │ 1.162 µs      │ 100     │ 100
+   │                                                      944.8 MiB/s   │ 341.2 MiB/s   │ 930.8 MiB/s   │ 866.2 MiB/s   │         │
+   ├─ Hashing 1.00 MB message, producing 32.00 B digest   428.3 µs      │ 1.738 ms      │ 597.2 µs      │ 634.8 µs      │ 100     │ 100
+   │                                                      2.279 GiB/s   │ 575.1 MiB/s   │ 1.635 GiB/s   │ 1.538 GiB/s   │         │
+   │                                                      max alloc:    │               │               │               │         │
+   │                                                        167         │ 167           │ 167           │ 167           │         │
+   │                                                        54.98 KiB   │ 54.98 KiB     │ 54.98 KiB     │ 54.98 KiB     │         │
+   │                                                      alloc:        │               │               │               │         │
+   │                                                        168         │ 168           │ 168           │ 168           │         │
+   │                                                        55.23 KiB   │ 55.23 KiB     │ 55.23 KiB     │ 55.23 KiB     │         │
+   │                                                      dealloc:      │               │               │               │         │
+   │                                                        4           │ 4             │ 4             │ 4             │         │
+   │                                                        9 KiB       │ 9 KiB         │ 9 KiB         │ 9 KiB         │         │
+   ├─ Hashing 32.00 B message, producing 32.00 B digest   355.8 ns      │ 18.09 µs      │ 657.3 ns      │ 895.1 ns      │ 100     │ 100
+   │                                                      171.5 MiB/s   │ 3.373 MiB/s   │ 92.84 MiB/s   │ 68.18 MiB/s   │         │
+   ├─ Hashing 32.00 KB message, producing 32.00 B digest  82.38 µs      │ 252.4 µs      │ 127.6 µs      │ 127.5 µs      │ 100     │ 100
+   │                                                      379.6 MiB/s   │ 123.9 MiB/s   │ 245 MiB/s     │ 245.3 MiB/s   │         │
    │                                                      max alloc:    │               │               │               │         │
    │                                                        47          │ 47            │ 47            │ 47            │         │
    │                                                        15.32 KiB   │ 15.32 KiB     │ 15.32 KiB     │ 15.32 KiB     │         │
@@ -114,9 +185,9 @@ kangarootwelve                                            fastest       │ slow
    │                                                        15.39 KiB   │ 15.39 KiB     │ 15.39 KiB     │ 15.39 KiB     │         │
    │                                                      dealloc:      │               │               │               │         │
    │                                                        4           │ 4             │ 4             │ 4             │         │
-   │                                                        384 B       │ 384 B         │ 384 B         │ 384 B         │         │
-   ├─ Hashing 32.00 MB message, producing 32.00 B digest  3.809 ms      │ 5.732 ms      │ 4.655 ms      │ 4.621 ms      │ 100     │ 100
-   │                                                      8.202 GiB/s   │ 5.45 GiB/s    │ 6.712 GiB/s   │ 6.761 GiB/s   │         │
+   │                                                        512 B       │ 512 B         │ 512 B         │ 512 B         │         │
+   ├─ Hashing 32.00 MB message, producing 32.00 B digest  4.661 ms      │ 7.196 ms      │ 5.695 ms      │ 5.645 ms      │ 100     │ 100
+   │                                                      6.703 GiB/s   │ 4.342 GiB/s   │ 5.486 GiB/s   │ 5.535 GiB/s   │         │
    │                                                      max alloc:    │               │               │               │         │
    │                                                        167         │ 167           │ 167           │ 167           │         │
    │                                                        54.98 KiB   │ 54.98 KiB     │ 54.98 KiB     │ 54.98 KiB     │         │
@@ -124,10 +195,10 @@ kangarootwelve                                            fastest       │ slow
    │                                                        168         │ 168           │ 168           │ 168           │         │
    │                                                        55.23 KiB   │ 55.23 KiB     │ 55.23 KiB     │ 55.23 KiB     │         │
    │                                                      dealloc:      │               │               │               │         │
-   │                                                        4           │ 4             │ 4             │ 4             │         │
-   │                                                        129 KiB     │ 129 KiB       │ 129 KiB       │ 129 KiB       │         │
-   ╰─ Hashing 64.00 B message, producing 32.00 B digest   359.8 ns      │ 2.395 µs      │ 389.8 ns      │ 432.3 ns      │ 100     │ 100
-                                                          254.4 MiB/s   │ 38.21 MiB/s   │ 234.8 MiB/s   │ 211.7 MiB/s   │         │
+   │                                                        4           │ 4             │ 4             │ 5.01          │         │
+   │                                                        257 KiB     │ 257 KiB       │ 257 KiB       │ 257.4 KiB     │         │
+   ╰─ Hashing 64.00 B message, producing 32.00 B digest   370.8 ns      │ 3.293 µs      │ 384.3 ns      │ 451.8 ns      │ 100     │ 100
+                                                          246.8 MiB/s   │ 27.79 MiB/s   │ 238.1 MiB/s   │ 202.6 MiB/s   │         │
 ```
 
 ## Usage
@@ -149,8 +220,10 @@ kangarootwelve = { version = "0.1.1", features = "multi_threaded" }
 2) Right now KangarooTwelve offers only non-incremental absorption API, so absorb message and customization string into sponge state using `hash()` function, which returns an XOF object, holding sponge in its finalized state.
 
 ```rust
-use kangarootwelve::KangarooTwelve;
-use rand::{thread_rng, RngCore};
+// Following example demonstrates how to use KT128, and similarly you can use KT256.
+
+use kangarootwelve::KT128;
+use rand::{rng, RngCore};
 
 fn main() {
   const MLEN: usize = 64;
@@ -161,11 +234,11 @@ fn main() {
   let mut cstr = vec![0u8; CSTRLEN]; // you can keep it empty
   let mut dig = vec![0u8; DLEN];
 
-  let mut rng = thread_rng();
+  let mut rng = rng();
   rng.fill_bytes(&mut msg);
   cstr[0] = 0xff;
 
-  let mut hasher = KangarooTwelve::hash(&msg, &cstr);
+  let mut hasher = KT128::hash(&msg, &cstr);
   // ...
 }
 ```
@@ -177,14 +250,16 @@ hasher.squeeze(&mut dig[..DLEN / 2]);
 hasher.squeeze(&mut dig[DLEN / 2..]);
 ```
 
-I maintain following example, demonstrating usage of KangarooTwelve eXtendable Output Function (XOF).
-
-- [k12](./examples/k12.rs)
+I maintain [examples](./examples/), demonstrating usage of KangarooTwelve eXtendable Output Function (XOF). Execute them by running `$ make example`.
 
 ```
-cargo run --release --example k12
-
-Message              = 03959c2ffc95ac27dbf150fa1bbd4eebeaf531cf5bfd93680a197453350260ca86d78ba9376c8bf55350a7b695f473c486853d955de5eef456a7bc14d22316c5
+Using KT128
+Message              = b2551f09169df9e10314acf7e8bb81af46a68c4748c49473da704d9386f871085272d3313afe96d51889ad9c2a1628c4f68ef00bf7dec89abf70204c9b778c84
 Customization String = ff
-Digest               = 1ab580fbc34d1e49d4c6b1b34b8e9d6b25e0ee60185559e3c7384e5c15629781
+Digest               = 2e93ed342a89def8c75721295206d68d4518838fdb7dfb11985d581c914a2afb
+
+Using KT256
+Message              = 1c71343c1b76032836db92ff8a5121e66aa62ce0111b28504615411f897a6dcc9af53edede9ed46ee0e41d19338eb3a5dd79bf1fda123eba3507bc9e5f04d76b
+Customization String = ff
+Digest               = fdda23356a3111dd01867dcbe3a874303f6ece12f04dc506e6cf3bc88db7cf5d
 ```

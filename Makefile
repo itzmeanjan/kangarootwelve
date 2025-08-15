@@ -40,11 +40,15 @@ clean: ## Removes cargo target directory
 	cargo clean
 
 .PHONY: example
-example: ## Runs the K12 example program
-	RUSTFLAGS="-C target-cpu=native" cargo run --example k12
-	RUSTFLAGS="-C target-cpu=native" cargo run --example k12 --features multi_threaded
+example: ## Runs the KT128 and KT256 example program
+	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128
+	RUSTFLAGS="-C target-cpu=native" cargo run --example kt256
+	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128 --features multi_threaded
+	RUSTFLAGS="-C target-cpu=native" cargo run --example kt256 --features multi_threaded
 
 .PHONY: example-wasm
-example-wasm: ## Runs the K12 example program in WASM environment
-	cargo run --example k12 --target wasm32-wasip1 --no-default-features
-	cargo run --example k12 --target wasm32-wasip2 --no-default-features
+example-wasm: ## Runs the KT128 and KT256 example program in WASM environment
+	cargo run --example kt128 --target wasm32-wasip1 --no-default-features
+	cargo run --example kt256 --target wasm32-wasip1 --no-default-features
+	cargo run --example kt128 --target wasm32-wasip2 --no-default-features
+	cargo run --example kt256 --target wasm32-wasip2 --no-default-features
