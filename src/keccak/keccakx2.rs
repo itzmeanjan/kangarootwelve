@@ -1,4 +1,4 @@
-use crate::chaining_value::keccak::consts::{RC, ROT};
+use crate::keccak::consts::{RC, ROT};
 use turboshake::keccak;
 
 #[cfg(target_arch = "x86")]
@@ -440,11 +440,14 @@ mod test {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn test_2xkeccak_permutation() {
-        use crate::chaining_value::keccak::keccakx2::permute;
+        use crate::keccak;
         use rand::Rng;
-        use std::arch::x86_64::{__m128i, _mm_set1_epi64x};
-        use std::arch::x86_64::{_mm_cvtsi128_si64, _mm_srli_si128};
-        use turboshake::keccak;
+
+        #[cfg(target_arch = "x86")]
+        use std::arch::x86::{__m128i, _mm_cvtsi128_si64, _mm_set1_epi64x, _mm_srli_si128};
+
+        #[cfg(target_arch = "x86_64")]
+        use std::arch::x86_64::{__m128i, _mm_cvtsi128_si64, _mm_set1_epi64x, _mm_srli_si128};
 
         if !is_x86_feature_detected!("sse2") {
             return;
@@ -452,16 +455,16 @@ mod test {
 
         let mut rng = rand::rng();
 
-        let mut keccak_state: [u64; keccak::LANE_CNT] = rng.random();
-        let mut keccak_statex2: [__m128i; keccak::LANE_CNT] = keccak_state
+        let mut keccak_state: [u64; turboshake::keccak::LANE_CNT] = rng.random();
+        let mut keccak_statex2: [__m128i; turboshake::keccak::LANE_CNT] = keccak_state
             .iter()
             .map(|&lane| unsafe { _mm_set1_epi64x(lane as i64) })
             .collect::<Vec<__m128i>>()
             .try_into()
             .expect("Must be able to form 2x keccak-p[1600], backed by SSE2 registers");
 
-        keccak::permute(&mut keccak_state);
-        unsafe { permute(&mut keccak_statex2) };
+        turboshake::keccak::permute(&mut keccak_state);
+        unsafe { keccak::keccakx2::permute(&mut keccak_statex2) };
 
         let (hi_keccak_state, lo_keccak_state): (Vec<_>, Vec<_>) = keccak_statex2
             .iter()

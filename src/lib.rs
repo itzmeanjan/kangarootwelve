@@ -1,4 +1,5 @@
-mod chaining_value;
+pub mod keccak;
+
 mod kt128;
 mod kt256;
 mod tests;
