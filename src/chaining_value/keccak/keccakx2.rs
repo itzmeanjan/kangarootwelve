@@ -434,3 +434,46 @@ fn roundx4(state: &mut [__m128i; keccak::LANE_CNT], ridx: usize) {
         state[24] = _mm_xor_si128(c[4], _mm_andnot_si128(c[0], c[1]));
     }
 }
+
+#[cfg(test)]
+mod test {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn test_2xkeccak_permutation() {
+        use crate::chaining_value::keccak::keccakx2::permute;
+        use rand::Rng;
+        use std::arch::x86_64::{__m128i, _mm_set1_epi64x};
+        use std::arch::x86_64::{_mm_cvtsi128_si64, _mm_srli_si128};
+        use turboshake::keccak;
+
+        if !is_x86_feature_detected!("sse2") {
+            return;
+        }
+
+        let mut rng = rand::rng();
+
+        let mut keccak_state: [u64; keccak::LANE_CNT] = rng.random();
+        let mut keccak_statex2: [__m128i; keccak::LANE_CNT] = keccak_state
+            .iter()
+            .map(|&lane| unsafe { _mm_set1_epi64x(lane as i64) })
+            .collect::<Vec<__m128i>>()
+            .try_into()
+            .expect("Must be able to form 2x keccak-p[1600], backed by SSE2 registers");
+
+        keccak::permute(&mut keccak_state);
+        unsafe { permute(&mut keccak_statex2) };
+
+        let (hi_keccak_state, lo_keccak_state): (Vec<_>, Vec<_>) = keccak_statex2
+            .iter()
+            .map(|&lanex2| unsafe {
+                let lo_64b = _mm_cvtsi128_si64(lanex2) as u64;
+                let hi_64b = _mm_cvtsi128_si64(_mm_srli_si128(lanex2, 8)) as u64;
+
+                (hi_64b, lo_64b)
+            })
+            .unzip();
+
+        assert_eq!(hi_keccak_state, keccak_state);
+        assert_eq!(lo_keccak_state, keccak_state);
+    }
+}
