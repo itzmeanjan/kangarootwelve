@@ -8,7 +8,7 @@ pub const ROT: [i32; keccak::LANE_CNT] = [0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3
 
 /// Keccak-p[1600] permutation round constants, taken from https://github.com/itzmeanjan/turboshake/blob/ddc435053f9194d5d54b092604be89b023ddecaf/src/keccak.rs#L19-L20.
 pub const RC: [i64; ROUNDS] = [
-    0x000000000000808bu64 as i64,
+    0x000000008000808bu64 as i64,
     0x800000000000008bu64 as i64,
     0x8000000000008089u64 as i64,
     0x8000000000008003u64 as i64,
