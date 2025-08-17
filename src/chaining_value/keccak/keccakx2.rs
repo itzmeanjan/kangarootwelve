@@ -9,7 +9,9 @@ use std::arch::x86_64::{__m128i, _mm_andnot_si128, _mm_or_si128, _mm_set1_epi64x
 
 /// Keccak-p\[1600\] permutation, applying 12 rounds permutation, on two states of dimension 5 x 5 x 64 ( = 1600 -bits ),
 /// using SSE2, following <https://github.com/itzmeanjan/turboshake/blob/ddc435053f9194d5d54b092604be89b023ddecaf/src/keccak.rs#L527-L540>.
-#[cfg(target_feature = "sse2")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "sse2")]
+#[allow(unused_unsafe)]
 pub fn permute(state: &mut [__m128i; keccak::LANE_CNT]) {
     roundx4(state, 0);
     roundx4(state, 4);
@@ -19,8 +21,10 @@ pub fn permute(state: &mut [__m128i; keccak::LANE_CNT]) {
 /// Keccak-p\[1600\] round function, applying all five step mapping functions in order, for four consecutive rounds, starting from round index `ridx`.
 /// This function is a line by line translation of <https://github.com/itzmeanjan/turboshake/blob/ddc435053f9194d5d54b092604be89b023ddecaf/src/keccak.rs#L114-L525>
 /// to SSE2 compatible version, where we are permuting two Keccak-p\[1600\] permutation instances in parallel.
-#[cfg(target_feature = "sse2")]
-#[inline(always)]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "sse2")]
+#[allow(unused_unsafe)]
+#[inline]
 fn roundx4(state: &mut [__m128i; keccak::LANE_CNT], ridx: usize) {
     unsafe {
         let mut c = [_mm_setzero_si128(); 5];
@@ -290,7 +294,7 @@ fn roundx4(state: &mut [__m128i; keccak::LANE_CNT], ridx: usize) {
 
         state[5] = _mm_xor_si128(c[0], _mm_andnot_si128(c[1], c[2]));
         state[16] = _mm_xor_si128(c[1], _mm_andnot_si128(c[2], c[3]));
-        state[22] = _mm_xor_si128(c[2], _mm_andnot_si128(c[3], c[4]));
+        state[2] = _mm_xor_si128(c[2], _mm_andnot_si128(c[3], c[4]));
         state[13] = _mm_xor_si128(c[3], _mm_andnot_si128(c[4], c[0]));
         state[24] = _mm_xor_si128(c[4], _mm_andnot_si128(c[0], c[1]));
 
