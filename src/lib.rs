@@ -1,3 +1,4 @@
+mod chaining_value;
 mod kt128;
 mod kt256;
 mod tests;
