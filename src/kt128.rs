@@ -1,6 +1,6 @@
 use crate::utils::length_encode;
 use std::cmp;
-use turboshake::{TurboShake128, sponge};
+use turboshake::{TurboShake128, keccak, sponge};
 
 #[cfg(feature = "multi_threaded")]
 use rayon::{ThreadPoolBuilder, prelude::*};
@@ -10,17 +10,21 @@ use rayon::{ThreadPoolBuilder, prelude::*};
 /// See <https://keccak.team/files/KangarooTwelve.pdf> and <https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve>
 #[derive(Copy, Clone)]
 pub struct KT128 {
-    state: [u64; 25],
+    state: [u64; keccak::LANE_CNT],
     is_ready: usize,
     squeezable: usize,
 }
 
 impl KT128 {
-    const CAPACITY_BITS: usize = 256;
-    const RATE_BITS: usize = 1600 - Self::CAPACITY_BITS;
-    const RATE_BYTES: usize = Self::RATE_BITS / 8;
-    const RATE_WORDS: usize = Self::RATE_BYTES / 8;
-    const B: usize = 8192;
+    const KECCAK_STATE_BIT_LEN: usize = keccak::W * keccak::LANE_CNT;
+    const BIT_SECURITY: usize = 128;
+
+    const CAPACITY_BITS: usize = 2 * Self::BIT_SECURITY;
+    const RATE_BITS: usize = Self::KECCAK_STATE_BIT_LEN - Self::CAPACITY_BITS;
+    const RATE_BYTES: usize = Self::RATE_BITS / u8::BITS as usize;
+
+    const B: usize = 8 * 1024; // 8kB
+
     const D_SEP_A: u8 = 0x07;
     const D_SEP_B: u8 = 0x0b;
     const D_SEP_C: u8 = 0x06;
@@ -101,8 +105,8 @@ impl KT128 {
 
             let (chunk, clen) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk[..clen]);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_A }>(&mut state, &mut offset);
 
             Self {
                 state,
@@ -117,26 +121,26 @@ impl KT128 {
             const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
             const PAD_B: [u8; 2] = [0xff, 0xff];
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk);
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_A);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_A);
 
             for i in 1..n {
                 let (chunk, clen) = Self::get_ith_chunk(i, msg, cstr, &enc[..elen]);
                 let mut cv = [0u8; 32];
 
-                let mut hasher = TurboShake128::new();
-                hasher.absorb(&chunk[..clen]);
-                hasher.finalize::<{ Self::D_SEP_B }>();
-                hasher.squeeze(&mut cv);
+                let mut hasher = TurboShake128::default();
+                let _ = hasher.absorb(&chunk[..clen]);
+                let _ = hasher.finalize::<{ Self::D_SEP_B }>();
+                let _ = hasher.squeeze(&mut cv);
 
-                sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &cv);
+                sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &cv);
             }
 
             let (enc, elen) = length_encode(n - 1);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &enc[..elen]);
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_B);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &enc[..elen]);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_B);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_C }>(&mut state, &mut offset);
 
             Self {
                 state,
@@ -168,8 +172,8 @@ impl KT128 {
 
             let (chunk, clen) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk[..clen]);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_A }>(&mut state, &mut offset);
 
             Self {
                 state,
@@ -184,8 +188,8 @@ impl KT128 {
             const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
             const PAD_B: [u8; 2] = [0xff, 0xff];
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk);
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_A);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_A);
 
             let cpus = cmp::min(num_cpus::get(), n - 1);
             let pool = ThreadPoolBuilder::new().num_threads(cpus).build().unwrap();
@@ -195,22 +199,22 @@ impl KT128 {
                 cvs.par_chunks_mut(32).enumerate().for_each(|(i, cv)| {
                     let (chunk, clen) = Self::get_ith_chunk(i + 1, msg, cstr, &enc[..elen]);
 
-                    let mut hasher = TurboShake128::new();
-                    hasher.absorb(&chunk[..clen]);
-                    hasher.finalize::<{ Self::D_SEP_B }>();
-                    hasher.squeeze(cv);
+                    let mut hasher = TurboShake128::default();
+                    let _ = hasher.absorb(&chunk[..clen]);
+                    let _ = hasher.finalize::<{ Self::D_SEP_B }>();
+                    let _ = hasher.squeeze(cv);
                 });
 
                 cvs
             });
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &cvs);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &cvs);
 
             let (enc, elen) = length_encode(n - 1);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &enc[..elen]);
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_B);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &enc[..elen]);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_B);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_C }>(&mut state, &mut offset);
 
             Self {
                 state,
@@ -232,6 +236,6 @@ impl KT128 {
             return;
         }
 
-        sponge::squeeze::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut self.state, &mut self.squeezable, out);
+        sponge::squeeze::<{ Self::RATE_BYTES }>(&mut self.state, &mut self.squeezable, out);
     }
 }

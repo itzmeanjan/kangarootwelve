@@ -14,7 +14,7 @@ keywords = ["keccak", "xof", "turboshake", "kangarootwelve", "k12"]
 categories = ["cryptography"]
 
 [dependencies]
-turboshake = { version = "=0.1.4", features = ["dev"] }
+turboshake = { version = "=0.5.0", features = ["dev"] }
 rayon = { version = "=1.11.0", optional = true }
 num_cpus = { version = "=1.17.0", optional = true }
 
