@@ -1,3 +1,4 @@
+pub mod cv;
 pub mod keccak;
 
 mod kt128;

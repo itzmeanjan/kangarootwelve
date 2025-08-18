@@ -11,7 +11,6 @@ use std::arch::x86_64::{__m128i, _mm_andnot_si128, _mm_or_si128, _mm_set1_epi64x
 /// using SSE2, following <https://github.com/itzmeanjan/turboshake/blob/ddc435053f9194d5d54b092604be89b023ddecaf/src/keccak.rs#L527-L540>.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "sse2")]
-#[allow(unused_unsafe)]
 pub fn permute(state: &mut [__m128i; keccak::LANE_CNT]) {
     roundx4(state, 0);
     roundx4(state, 4);
