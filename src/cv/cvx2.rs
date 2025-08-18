@@ -1,3 +1,4 @@
+use crate::cv::consts::CHUNK_BYTE_LEN;
 use crate::keccak::keccakx2;
 
 #[cfg(target_arch = "x86")]
@@ -9,15 +10,15 @@ use std::arch::x86_64::*;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "sse2")]
 #[allow(unused_unsafe)]
-pub fn compute_chaining_valuex2<const CHUNK_SIZE: usize, const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
-    chunk0: &[u8; CHUNK_SIZE],
-    chunk1: &[u8; CHUNK_SIZE],
+pub fn compute_chaining_valuex2<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
+    chunk0: &[u8; CHUNK_BYTE_LEN],
+    chunk1: &[u8; CHUNK_BYTE_LEN],
 ) -> ([u8; CV_SIZE], [u8; CV_SIZE]) {
     unsafe {
         let num_rate_bytes = NUM_RATE_BITS / u8::BITS as usize;
         let num_rate_words = NUM_RATE_BITS / turboshake::keccak::W;
 
-        let num_bytes_in_last_block = CHUNK_SIZE % num_rate_bytes;
+        let num_bytes_in_last_block = CHUNK_BYTE_LEN % num_rate_bytes;
         let num_words_in_last_block = num_bytes_in_last_block / u8::BITS as usize;
 
         let mut keccak_statex2 = [_mm_setzero_si128(); turboshake::keccak::LANE_CNT];
@@ -83,5 +84,89 @@ pub fn compute_chaining_valuex2<const CHUNK_SIZE: usize, const NUM_RATE_BITS: us
             });
 
         (cv0, cv1)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::cv::consts::CHUNK_BYTE_LEN;
+    use turboshake::{TurboShake128, TurboShake256};
+
+    const TS128_NUM_RATE_BITS: usize = 1600 - 256;
+    const TS256_NUM_RATE_BITS: usize = 1600 - 512;
+
+    const TS128_CHAINING_VALUE_BYTE_LEN: usize = 32;
+    const TS256_CHAINING_VALUE_BYTE_LEN: usize = 64;
+
+    const DOMAIN_SEPARATOR: u8 = 0x0b;
+
+    fn compute_cv_with_ts128(chunk: &[u8; CHUNK_BYTE_LEN]) -> [u8; TS128_CHAINING_VALUE_BYTE_LEN] {
+        let mut cv = [0u8; TS128_CHAINING_VALUE_BYTE_LEN];
+        let mut ts128 = TurboShake128::default();
+
+        let _ = ts128.absorb(chunk);
+        let _ = ts128.finalize::<DOMAIN_SEPARATOR>();
+        let _ = ts128.squeeze(&mut cv);
+
+        cv
+    }
+
+    fn compute_cv_with_ts256(chunk: &[u8; CHUNK_BYTE_LEN]) -> [u8; TS256_CHAINING_VALUE_BYTE_LEN] {
+        let mut cv = [0u8; TS256_CHAINING_VALUE_BYTE_LEN];
+        let mut ts256 = TurboShake256::default();
+
+        let _ = ts256.absorb(chunk);
+        let _ = ts256.finalize::<DOMAIN_SEPARATOR>();
+        let _ = ts256.squeeze(&mut cv);
+
+        cv
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn test_2xcompute_chaining_value_with_ts128() {
+        use crate::cv::cvx2::compute_chaining_valuex2;
+        use rand::Rng;
+
+        if !is_x86_feature_detected!("sse2") {
+            return;
+        }
+
+        let mut rng = rand::rng();
+        let chunk0: [u8; CHUNK_BYTE_LEN] = rng.random();
+        let chunk1: [u8; CHUNK_BYTE_LEN] = rng.random();
+
+        let expected_cv0 = compute_cv_with_ts128(&chunk0);
+        let expected_cv1 = compute_cv_with_ts128(&chunk1);
+
+        let (computed_cv0, computed_cv1) =
+            unsafe { compute_chaining_valuex2::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(&chunk0, &chunk1) };
+
+        assert_eq!(expected_cv0, computed_cv0);
+        assert_eq!(expected_cv1, computed_cv1);
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn test_2xcompute_chaining_value_with_ts256() {
+        use crate::cv::cvx2::compute_chaining_valuex2;
+        use rand::Rng;
+
+        if !is_x86_feature_detected!("sse2") {
+            return;
+        }
+
+        let mut rng = rand::rng();
+        let chunk0: [u8; CHUNK_BYTE_LEN] = rng.random();
+        let chunk1: [u8; CHUNK_BYTE_LEN] = rng.random();
+
+        let expected_cv0 = compute_cv_with_ts256(&chunk0);
+        let expected_cv1 = compute_cv_with_ts256(&chunk1);
+
+        let (computed_cv0, computed_cv1) =
+            unsafe { compute_chaining_valuex2::<TS256_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS256_CHAINING_VALUE_BYTE_LEN>(&chunk0, &chunk1) };
+
+        assert_eq!(expected_cv0, computed_cv0);
+        assert_eq!(expected_cv1, computed_cv1);
     }
 }
