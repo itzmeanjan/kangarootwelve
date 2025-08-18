@@ -1,20 +1,21 @@
 # kangarootwelve
+
 BlaKE12: Blazing-fast KEccak on 12 rounds
 
 ## Overview
 
-KangarooTwelve is a family of fast and secure arbitrary output-length hash functions which performs much better than hash and extendable output functions specified on FIPS 202 ( more @ https://dx.doi.org/10.6028/NIST.FIPS.202 ). KangarooTwelve ( aka K12 or BlaKE12 - see more @ https://blake12.org ) is built on top of round-reduced keccak-p[1600, 12] permutation. To be more specific KangarooTwelve can be implemented on top of TurboSHAKE - which is a family of extendable output functions, recently specified on https://ia.cr/2023/342. KangarooTwelve offers two instances
+KangarooTwelve is a family of fast and secure arbitrary output-length hash functions which performs much better than hash and extendable output functions specified on FIPS 202 ( more @ <https://dx.doi.org/10.6028/NIST.FIPS.202> ). KangarooTwelve ( aka K12 or BlaKE12 - see more @ <https://blake12.org> ) is built on top of round-reduced keccak-p[1600, 12] permutation. To be more specific KangarooTwelve can be implemented on top of TurboSHAKE - which is a family of extendable output functions, recently specified on <https://ia.cr/2023/342>. KangarooTwelve offers two instances
 
 - KT128, uses TurboSHAKE128 as underlying chunk hasher.
 - KT256, uses TurboSHAKE256 as underlying chunk hasher.
 
-K12 possesses a built-in parallel tree hashing mode (using SAKURA coding) for long ( >=8KB ) messages which can efficiently be exploited by multiple-cores or SIMD instructions. Another important gain of K12 is that its parallel design doesn't impact performance when hashing short ( <8KB ) messages. Originally KangarooTwelve (which is now renamed to KT128) was specified on https://keccak.team/files/KangarooTwelve.pdf. The latest specification, defining both KT128 and KT256 can be found @ https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve.
+K12 possesses a built-in parallel tree hashing mode (using SAKURA coding) for long ( >=8KB ) messages which can efficiently be exploited by multiple-cores or SIMD instructions. Another important gain of K12 is that its parallel design doesn't impact performance when hashing short ( <8KB ) messages. Originally KangarooTwelve (which is now renamed to KT128) was specified on <https://keccak.team/files/KangarooTwelve.pdf>. The latest specification, defining both KT128 and KT256 can be found @ <https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve>.
 
 Here I'm developing/ maintaining a Rust library which implements KangarooTwelve specification s.t. it implements non-incremental absorption API with arbitrary times squeeze support. In coming weeks, I plan to support incremental hashing API i.e. one can construct a K12 hasher object for absorbing message bytes arbitrary many times, then finalize using customization string, before squeezing bytes out of sponge state. See [below](#usage) for example, showing usage of K12 XOF API.
 
 ## Prerequisites
 
-Rust stable toolchain; see https://rustup.rs for installation guide. MSRV for this crate is 1.85.0.
+Rust stable toolchain; see <https://rustup.rs> for installation guide. MSRV for this crate is 1.85.0.
 
 ```bash
 # When developing this library, I was using
@@ -24,7 +25,7 @@ rustc 1.89.0 (29483883e 2025-08-04)
 
 ## Testing
 
-For ensuring functional correctness of KangarooTwelve family of XOF implementation, I use test vectors from section 5 (on page 12) of https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve. Issue following command to run all tests.
+For ensuring functional correctness of KangarooTwelve family of XOF implementation, I use test vectors from section 5 (on page 12) of <https://datatracker.ietf.org/doc/draft-irtf-cfrg-kangarootwelve>. Issue following command to run all tests.
 
 ```bash
 # Testing on host, first with `default` feature, then with `multi_threaded` feature enabled.
@@ -47,8 +48,7 @@ make bench # First runs with `default` feature, then with `multi_threaded` featu
 ```
 
 > [!WARNING]
-> When benchmarking make sure you've disabled CPU frequency scaling, otherwise numbers you see can be misleading. I find https://github.com/google/benchmark/blob/b40db869/docs/reducing_variance.md helpful.
-
+> When benchmarking make sure you've disabled CPU frequency scaling, otherwise numbers you see can be misleading. I find <https://github.com/google/benchmark/blob/b40db869/docs/reducing_variance.md> helpful.
 
 ### On 12th Gen Intel(R) Core(TM) i7-1260P
 
@@ -205,7 +205,7 @@ kangarootwelve                                            fastest       │ slow
 
 Getting started with using KangarooTwelve extendable output function API is pretty easy
 
-1) Add `kangarootwelve` as project dependency in your `Cargo.toml` file
+1. Add `kangarootwelve` as project dependency in your `Cargo.toml` file
 
 ```toml
 [dependencies]
@@ -217,7 +217,7 @@ kangarootwelve = "0.1.1"
 kangarootwelve = { version = "0.1.1", features = "multi_threaded" }
 ```
 
-2) Right now KangarooTwelve offers only non-incremental absorption API, so absorb message and customization string into sponge state using `hash()` function, which returns an XOF object, holding sponge in its finalized state.
+2. Right now KangarooTwelve offers only non-incremental absorption API, so absorb message and customization string into sponge state using `hash()` function, which returns an XOF object, holding sponge in its finalized state.
 
 ```rust
 // Following example demonstrates how to use KT128, and similarly you can use KT256.
@@ -243,7 +243,7 @@ fn main() {
 }
 ```
 
-3) Sponge is ready to be squeezed i.e. now you can use returned XOF object for squeezing arbitrary number of bytes arbitrary number of times.
+3. Sponge is ready to be squeezed i.e. now you can use returned XOF object for squeezing arbitrary number of bytes arbitrary number of times.
 
 ```rust
 hasher.squeeze(&mut dig[..DLEN / 2]);
@@ -252,7 +252,7 @@ hasher.squeeze(&mut dig[DLEN / 2..]);
 
 I maintain [examples](./examples/), demonstrating usage of KangarooTwelve eXtendable Output Function (XOF). Execute them by running `$ make example`.
 
-```
+```bash
 Using KT128
 Message              = b2551f09169df9e10314acf7e8bb81af46a68c4748c49473da704d9386f871085272d3313afe96d51889ad9c2a1628c4f68ef00bf7dec89abf70204c9b778c84
 Customization String = ff
