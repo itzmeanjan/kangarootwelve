@@ -49,3 +49,29 @@ fn compute_chaining_valuex2(bencher: divan::Bencher) {
             )
         });
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[divan::bench(name="4x SIMD parallel compute chaining value using TurboSHAKE128 (avx2)", min_time = Duration::from_secs(10), max_time = Duration::from_secs(100), skip_ext_time = true)]
+fn compute_chaining_valuex4(bencher: divan::Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
+
+    let mut rng = rand::rng();
+
+    let chunk0: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
+    let chunk1: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
+    let chunk2: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
+    let chunk3: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
+
+    bencher
+        .counter(divan::counter::BytesCount::new(chunk0.len() + chunk1.len() + chunk2.len() + chunk3.len()))
+        .bench_local(|| unsafe {
+            cv::cvx4::compute_chaining_valuex4::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(
+                divan::black_box(&chunk0),
+                divan::black_box(&chunk1),
+                divan::black_box(&chunk2),
+                divan::black_box(&chunk3),
+            )
+        });
+}
