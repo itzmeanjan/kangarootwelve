@@ -114,3 +114,99 @@ pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARAT
         (cv0, cv1, cv2, cv3)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::cv::consts::CHUNK_BYTE_LEN;
+    use crate::cv::cvx4;
+    use rand::Rng;
+    use turboshake::{TurboShake128, TurboShake256};
+
+    const TS128_NUM_RATE_BITS: usize = 1600 - 256;
+    const TS256_NUM_RATE_BITS: usize = 1600 - 512;
+
+    const TS128_CHAINING_VALUE_BYTE_LEN: usize = 32;
+    const TS256_CHAINING_VALUE_BYTE_LEN: usize = 64;
+
+    const DOMAIN_SEPARATOR: u8 = 0x0b;
+
+    fn compute_cv_with_ts128(chunk: &[u8; CHUNK_BYTE_LEN]) -> [u8; TS128_CHAINING_VALUE_BYTE_LEN] {
+        let mut cv = [0u8; TS128_CHAINING_VALUE_BYTE_LEN];
+        let mut ts128 = TurboShake128::default();
+
+        let _ = ts128.absorb(chunk);
+        let _ = ts128.finalize::<DOMAIN_SEPARATOR>();
+        let _ = ts128.squeeze(&mut cv);
+
+        cv
+    }
+
+    fn compute_cv_with_ts256(chunk: &[u8; CHUNK_BYTE_LEN]) -> [u8; TS256_CHAINING_VALUE_BYTE_LEN] {
+        let mut cv = [0u8; TS256_CHAINING_VALUE_BYTE_LEN];
+        let mut ts256 = TurboShake256::default();
+
+        let _ = ts256.absorb(chunk);
+        let _ = ts256.finalize::<DOMAIN_SEPARATOR>();
+        let _ = ts256.squeeze(&mut cv);
+
+        cv
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn test_4xcompute_chaining_value_with_ts128() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+
+        let mut rng = rand::rng();
+
+        let chunk0: [u8; CHUNK_BYTE_LEN] = rng.random();
+        let chunk1: [u8; CHUNK_BYTE_LEN] = rng.random();
+        let chunk2: [u8; CHUNK_BYTE_LEN] = rng.random();
+        let chunk3: [u8; CHUNK_BYTE_LEN] = rng.random();
+
+        let expected_cv0 = compute_cv_with_ts128(&chunk0);
+        let expected_cv1 = compute_cv_with_ts128(&chunk1);
+        let expected_cv2 = compute_cv_with_ts128(&chunk2);
+        let expected_cv3 = compute_cv_with_ts128(&chunk3);
+
+        let (computed_cv0, computed_cv1, computed_cv2, computed_cv3) = unsafe {
+            cvx4::compute_chaining_valuex4::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(&chunk0, &chunk1, &chunk2, &chunk3)
+        };
+
+        assert_eq!(expected_cv0, computed_cv0);
+        assert_eq!(expected_cv1, computed_cv1);
+        assert_eq!(expected_cv2, computed_cv2);
+        assert_eq!(expected_cv3, computed_cv3);
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn test_4xcompute_chaining_value_with_ts256() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+
+        let mut rng = rand::rng();
+
+        let chunk0: [u8; CHUNK_BYTE_LEN] = rng.random();
+        let chunk1: [u8; CHUNK_BYTE_LEN] = rng.random();
+        let chunk2: [u8; CHUNK_BYTE_LEN] = rng.random();
+        let chunk3: [u8; CHUNK_BYTE_LEN] = rng.random();
+
+        let expected_cv0 = compute_cv_with_ts256(&chunk0);
+        let expected_cv1 = compute_cv_with_ts256(&chunk1);
+        let expected_cv2 = compute_cv_with_ts256(&chunk2);
+        let expected_cv3 = compute_cv_with_ts256(&chunk3);
+
+        let (computed_cv0, computed_cv1, computed_cv2, computed_cv3) = unsafe {
+            cvx4::compute_chaining_valuex4::<TS256_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS256_CHAINING_VALUE_BYTE_LEN>(&chunk0, &chunk1, &chunk2, &chunk3)
+        };
+
+        assert_eq!(expected_cv0, computed_cv0);
+        assert_eq!(expected_cv1, computed_cv1);
+        assert_eq!(expected_cv2, computed_cv2);
+        assert_eq!(expected_cv3, computed_cv3);
+    }
+}
