@@ -30,7 +30,7 @@ impl KT128 {
     const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
     const PAD_B: [u8; 2] = [0xff, 0xff];
 
-    const CHAINING_VALUE_BYTE_LEN: usize = 32;
+    const CHAINING_VALUE_BYTE_LEN: usize = Self::CAPACITY_BITS / u8::BITS as usize;
 
     /// Given message (M), customization string (C) and length of C encoded using `length_encode()`
     /// function ( s.t. only first `elen` bytes are of interest ), this routine writes at max
