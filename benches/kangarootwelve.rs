@@ -28,9 +28,19 @@ struct K12Config {
 }
 
 impl Debug for K12Config {
+    #[cfg(not(feature = "multi_threaded"))]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&format!(
-            "Hashing {} message, producing {} digest",
+            "Hashing {} message, producing {} digest, in a single thread",
+            bytes_to_human_readable(self.msg_byte_len),
+            bytes_to_human_readable(self.digest_byte_len)
+        ))
+    }
+
+    #[cfg(feature = "multi_threaded")]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!(
+            "Hashing {} message, producing {} digest, using multiple threads",
             bytes_to_human_readable(self.msg_byte_len),
             bytes_to_human_readable(self.digest_byte_len)
         ))
