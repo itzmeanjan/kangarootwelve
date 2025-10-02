@@ -33,9 +33,10 @@ impl KT128 {
     const CHAINING_VALUE_BYTE_LEN: usize = 32;
 
     /// Given message (M), customization string (C) and length of C encoded using `length_encode()`
-    /// function ( s.t. only first `elen` bytes are of interest ), this routine extracts out `NUM_CONTIGUOUS_BYTES_TO_READ` -bytes,
-    /// starting from beginning of the `i` -th chunk ( s.t. each chunk is `CHUNK_BYTE_LEN` -bytes wide ) along with how many
-    /// ( must be <= B ) bytes are of significance.
+    /// function ( s.t. only first `elen` bytes are of interest ), this routine writes at max
+    /// `NUM_CONTIGUOUS_BYTES_TO_READ` -bytes, starting from beginning of the `i` -th chunk
+    /// ( s.t. each chunk is `CHUNK_BYTE_LEN` -bytes wide ) to the output buffer.
+    /// It returns how many bytes were actually written to the output buffer.
     ///
     /// For understanding how this function works, let us assume
     ///
@@ -49,8 +50,67 @@ impl KT128 {
     ///
     /// You may want to take a look at section 3.{2, 3} of the K12 specification
     /// https://keccak.team/files/KangarooTwelve.pdf for understanding why this function exists.
+    #[cfg(not(feature = "multi_threaded"))]
     #[inline(always)]
-    fn get_ith_chunk<const NUM_CONTIGUOUS_BYTES_TO_READ: usize>(i: usize, msg: &[u8], cstr: &[u8], enc: &[u8]) -> (Vec<u8>, usize) {
+    fn get_ith_chunk<const NUM_CONTIGUOUS_BYTES_TO_READ: usize>(
+        i: usize,
+        msg: &[u8],
+        cstr: &[u8],
+        enc: &[u8],
+        chunk_bytes: &mut [u8; NUM_CONTIGUOUS_BYTES_TO_READ],
+    ) -> usize {
+        let l0 = msg.len();
+        let l1 = l0 + cstr.len();
+        let l2 = l1 + enc.len();
+
+        let mut offset = 0;
+        let start_at = i * CHUNK_BYTE_LEN;
+
+        if start_at < l0 {
+            let readable = cmp::min(l0 - start_at, NUM_CONTIGUOUS_BYTES_TO_READ);
+            chunk_bytes[..readable].copy_from_slice(&msg[start_at..(start_at + readable)]);
+
+            offset += readable;
+        }
+
+        if (offset < NUM_CONTIGUOUS_BYTES_TO_READ) && ((start_at + offset) < l1) {
+            let readable = cmp::min(l1 - (start_at + offset), NUM_CONTIGUOUS_BYTES_TO_READ - offset);
+            let tmp = (start_at + offset) - l0;
+            chunk_bytes[offset..(offset + readable)].copy_from_slice(&cstr[tmp..(tmp + readable)]);
+
+            offset += readable;
+        }
+
+        if (offset < NUM_CONTIGUOUS_BYTES_TO_READ) && ((start_at + offset) < l2) {
+            let readable = cmp::min(l2 - (start_at + offset), NUM_CONTIGUOUS_BYTES_TO_READ - offset);
+            let tmp = (start_at + offset) - l1;
+            chunk_bytes[offset..(offset + readable)].copy_from_slice(&enc[tmp..(tmp + readable)]);
+
+            offset += readable;
+        }
+
+        offset
+    }
+
+    /// Given message (M), customization string (C) and length of C encoded using `length_encode()`
+    /// function ( s.t. only first `elen` bytes are of interest ), this routine extracts out at max `NUM_CONTIGUOUS_BYTES_TO_READ` -bytes,
+    /// starting from the beginning of the `i` -th chunk ( s.t. each chunk is `CHUNK_BYTE_LEN` -bytes wide ).
+    ///
+    /// For understanding how this function works, let us assume
+    ///
+    /// S <- M || C || length_encode(|C|) s.t. |C| <- byte length of C
+    ///
+    /// We can split S into `n` -chunks s.t. first (n - 1) chunks are of length B while the
+    /// last one is of length <= B. So n = ⌈|S|/ B⌉
+    ///
+    /// n must be 1, because it's guaranteed that S will be atleast 1 -byte wide even if both M
+    /// and C are empty. Then it must be the case that 0 <= i < n.
+    ///
+    /// You may want to take a look at section 3.{2, 3} of the K12 specification
+    /// https://keccak.team/files/KangarooTwelve.pdf for understanding why this function exists.
+    #[cfg(feature = "multi_threaded")]
+    #[inline(always)]
+    fn get_ith_chunk<const NUM_CONTIGUOUS_BYTES_TO_READ: usize>(i: usize, msg: &[u8], cstr: &[u8], enc: &[u8]) -> Vec<u8> {
         let l0 = msg.len();
         let l1 = l0 + cstr.len();
         let l2 = l1 + enc.len();
@@ -83,12 +143,13 @@ impl KT128 {
             offset += readable;
         }
 
-        (chunk, offset)
+        chunk.truncate(offset);
+        chunk
     }
 
     /// Given message (M) and customization string (C, which can be used for domain seperation)
-    /// this routine consumes both of them into Keccak\[256\] sponge state, using single thread,
-    /// in chunks of B -bytes s.t. returned KT128 object can be used for squeezing arbitrary number
+    /// this routine consumes both of them into Keccak\[256\] sponge state, using a single execution thread,
+    /// in chunks of `CHUNK_BYTE_LEN` -bytes s.t. returned KT128 object can be used for squeezing arbitrary number
     /// of bytes from sponge state.
     ///
     /// This is a single-threaded implementation of the KT128 tree hash mode, as described in section 3.3
@@ -104,11 +165,13 @@ impl KT128 {
         let num_full_chunks = tlen / CHUNK_BYTE_LEN;
         let num_total_chunks = tlen.div_ceil(CHUNK_BYTE_LEN);
 
+        let mut chunk = [0u8; CHUNK_BYTE_LEN];
+
         if num_total_chunks == 1 {
             let mut state = [0u64; keccak::LANE_CNT];
             let mut offset = 0;
 
-            let (chunk, clen) = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen]);
+            let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen], &mut chunk);
 
             sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
             sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_A }>(&mut state, &mut offset);
@@ -124,7 +187,7 @@ impl KT128 {
 
             let mut chunk_idx = 0;
 
-            let (chunk, _) = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
+            let _ = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
             chunk_idx += 1;
 
             sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chunk);
@@ -136,13 +199,16 @@ impl KT128 {
                     use crate::cv::cvx4;
 
                     const SIMD_PARALLELISM_FACTOR: usize = 4;
+
+                    let mut chunkx4 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
+                    let mut chaining_valuex4 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
+
                     let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     while chunk_idx < simd_chunkable_till {
-                        let (chunkx4, _) = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
+                        let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunkx4);
                         chunk_idx += SIMD_PARALLELISM_FACTOR;
 
-                        let mut chaining_valuex4 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
                         unsafe {
                             cvx4::compute_chaining_valuex4::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
                                 &chunkx4,
@@ -158,13 +224,16 @@ impl KT128 {
                     use crate::cv::cvx2;
 
                     const SIMD_PARALLELISM_FACTOR: usize = 2;
+
+                    let mut chunkx2 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
+                    let mut chaining_valuex2 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
+
                     let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     while chunk_idx < simd_chunkable_till {
-                        let (chunkx2, _) = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
+                        let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunkx2);
                         chunk_idx += SIMD_PARALLELISM_FACTOR;
 
-                        let mut chaining_valuex2 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
                         unsafe {
                             cvx2::compute_chaining_valuex2::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
                                 &chunkx2,
@@ -178,7 +247,7 @@ impl KT128 {
             }
 
             while chunk_idx < num_total_chunks {
-                let (chunk, clen) = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
+                let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
                 chunk_idx += 1;
 
                 let mut cv = [0u8; Self::CHAINING_VALUE_BYTE_LEN];
@@ -207,7 +276,7 @@ impl KT128 {
 
     /// Given message (M) and customization string (C, which can be used for domain seperation)
     /// this routine consumes both of them into Keccak\[256\] sponge state, using multiple threads i.e.
-    /// equals to # -of logical cores supported by execution environment, in chunks of B -bytes s.t.
+    /// equals to # -of logical cores supported by execution environment, in chunks of `CHUNK_BYTE_LEN` -bytes s.t.
     /// returned KT128 object can be used for squeezing arbitrary number of bytes from sponge state.
     ///
     /// This is a multi-threaded implementation of the KT128 tree hash mode, as described in section 3.3
@@ -227,9 +296,9 @@ impl KT128 {
             let mut state = [0u64; keccak::LANE_CNT];
             let mut offset = 0;
 
-            let (chunk, clen) = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen]);
+            let chunk = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen]);
 
-            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk);
             sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_A }>(&mut state, &mut offset);
 
             Self {
@@ -243,7 +312,7 @@ impl KT128 {
 
             let mut chunk_idx = 0;
 
-            let (chunk, _) = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen]);
+            let chunk = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen]);
             chunk_idx += 1;
 
             sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chunk);
@@ -288,7 +357,7 @@ impl KT128 {
                                 use crate::cv::cvx4;
 
                                 const SIMD_PARALLELISM_FACTOR: usize = 4;
-                                let (chunkx4, _) = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
+                                let chunkx4 = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
 
                                 unsafe {
                                     cvx4::compute_chaining_valuex4::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
@@ -304,7 +373,7 @@ impl KT128 {
                                 use crate::cv::cvx2;
 
                                 const SIMD_PARALLELISM_FACTOR: usize = 2;
-                                let (chunkx2, _) = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
+                                let chunkx2 = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
 
                                 unsafe {
                                     cvx2::compute_chaining_valuex2::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
@@ -337,13 +406,13 @@ impl KT128 {
             sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cvs);
 
             while chunk_idx < num_total_chunks {
-                let (chunk, clen) = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
+                let chunk = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen]);
                 chunk_idx += 1;
 
                 let mut cv = [0u8; Self::CHAINING_VALUE_BYTE_LEN];
 
                 let mut hasher = TurboShake128::default();
-                let _ = hasher.absorb(&chunk[..clen]);
+                let _ = hasher.absorb(&chunk);
                 let _ = hasher.finalize::<{ Self::D_SEP_B }>();
                 let _ = hasher.squeeze(&mut cv);
 
