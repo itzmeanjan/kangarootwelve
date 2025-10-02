@@ -35,18 +35,16 @@ fn compute_chaining_valuex2(bencher: divan::Bencher) {
         return;
     }
 
-    let mut rng = rand::rng();
-
-    let chunk0: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
-    let chunk1: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
-
     bencher
-        .counter(divan::counter::BytesCount::new(chunk0.len() + chunk1.len()))
-        .bench_local(|| unsafe {
-            cv::cvx2::compute_chaining_valuex2::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(
-                divan::black_box(&chunk0),
-                divan::black_box(&chunk1),
-            )
+        .with_inputs(|| {
+            let mut rng = rand::rng();
+            let chunk: [u8; 2 * cv::consts::CHUNK_BYTE_LEN] = rng.random();
+
+            chunk
+        })
+        .input_counter(|chunk| divan::counter::BytesCount::new(chunk.len()))
+        .bench_values(|chunk| unsafe {
+            cv::cvx2::compute_chaining_valuex2::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(divan::black_box(&chunk))
         });
 }
 
@@ -57,21 +55,15 @@ fn compute_chaining_valuex4(bencher: divan::Bencher) {
         return;
     }
 
-    let mut rng = rand::rng();
-
-    let chunk0: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
-    let chunk1: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
-    let chunk2: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
-    let chunk3: [u8; cv::consts::CHUNK_BYTE_LEN] = rng.random();
-
     bencher
-        .counter(divan::counter::BytesCount::new(chunk0.len() + chunk1.len() + chunk2.len() + chunk3.len()))
-        .bench_local(|| unsafe {
-            cv::cvx4::compute_chaining_valuex4::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(
-                divan::black_box(&chunk0),
-                divan::black_box(&chunk1),
-                divan::black_box(&chunk2),
-                divan::black_box(&chunk3),
-            )
+        .with_inputs(|| {
+            let mut rng = rand::rng();
+            let chunk: [u8; 4 * cv::consts::CHUNK_BYTE_LEN] = rng.random();
+
+            chunk
+        })
+        .input_counter(|chunk| divan::counter::BytesCount::new(chunk.len()))
+        .bench_values(|chunk| unsafe {
+            cv::cvx4::compute_chaining_valuex4::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(divan::black_box(&chunk))
         });
 }
