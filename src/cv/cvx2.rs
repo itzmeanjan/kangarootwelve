@@ -11,8 +11,7 @@ use std::arch::x86_64::*;
 #[target_feature(enable = "sse2")]
 #[allow(unused_unsafe)]
 pub fn compute_chaining_valuex2<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
-    chunk0: &[u8; CHUNK_BYTE_LEN],
-    chunk1: &[u8; CHUNK_BYTE_LEN],
+    chunk: &[u8; 2 * CHUNK_BYTE_LEN],
 ) -> ([u8; CV_SIZE], [u8; CV_SIZE]) {
     unsafe {
         let num_rate_bytes = NUM_RATE_BITS / u8::BITS as usize;
@@ -22,6 +21,8 @@ pub fn compute_chaining_valuex2<const NUM_RATE_BITS: usize, const DOMAIN_SEPARAT
         let num_words_in_last_block = num_bytes_in_last_block / u8::BITS as usize;
 
         let mut keccak_statex2 = [_mm_setzero_si128(); turboshake::keccak::LANE_CNT];
+
+        let (chunk0, chunk1) = chunk.split_at(CHUNK_BYTE_LEN);
 
         let mut chunk0_iter = chunk0.chunks_exact(num_rate_bytes);
         let mut chunk1_iter = chunk1.chunks_exact(num_rate_bytes);
@@ -133,14 +134,14 @@ mod test {
         }
 
         let mut rng = rand::rng();
-        let chunk0: [u8; CHUNK_BYTE_LEN] = rng.random();
-        let chunk1: [u8; CHUNK_BYTE_LEN] = rng.random();
 
-        let expected_cv0 = compute_cv_with_ts128(&chunk0);
-        let expected_cv1 = compute_cv_with_ts128(&chunk1);
+        let chunk: [u8; 2 * CHUNK_BYTE_LEN] = rng.random();
+        let (chunk0, chunk1) = chunk.split_at(CHUNK_BYTE_LEN);
 
-        let (computed_cv0, computed_cv1) =
-            unsafe { compute_chaining_valuex2::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(&chunk0, &chunk1) };
+        let expected_cv0 = compute_cv_with_ts128(chunk0.try_into().expect("must not fail to convert slice to array reference"));
+        let expected_cv1 = compute_cv_with_ts128(chunk1.try_into().expect("must not fail to convert slice to array reference"));
+
+        let (computed_cv0, computed_cv1) = unsafe { compute_chaining_valuex2::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(&chunk) };
 
         assert_eq!(expected_cv0, computed_cv0);
         assert_eq!(expected_cv1, computed_cv1);
@@ -157,14 +158,14 @@ mod test {
         }
 
         let mut rng = rand::rng();
-        let chunk0: [u8; CHUNK_BYTE_LEN] = rng.random();
-        let chunk1: [u8; CHUNK_BYTE_LEN] = rng.random();
 
-        let expected_cv0 = compute_cv_with_ts256(&chunk0);
-        let expected_cv1 = compute_cv_with_ts256(&chunk1);
+        let chunk: [u8; 2 * CHUNK_BYTE_LEN] = rng.random();
+        let (chunk0, chunk1) = chunk.split_at(CHUNK_BYTE_LEN);
 
-        let (computed_cv0, computed_cv1) =
-            unsafe { compute_chaining_valuex2::<TS256_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS256_CHAINING_VALUE_BYTE_LEN>(&chunk0, &chunk1) };
+        let expected_cv0 = compute_cv_with_ts256(chunk0.try_into().expect("must not fail to convert slice to array reference"));
+        let expected_cv1 = compute_cv_with_ts256(chunk1.try_into().expect("must not fail to convert slice to array reference"));
+
+        let (computed_cv0, computed_cv1) = unsafe { compute_chaining_valuex2::<TS256_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS256_CHAINING_VALUE_BYTE_LEN>(&chunk) };
 
         assert_eq!(expected_cv0, computed_cv0);
         assert_eq!(expected_cv1, computed_cv1);
