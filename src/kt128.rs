@@ -1,4 +1,4 @@
-use crate::utils::length_encode;
+use crate::{cv::consts::CHUNK_BYTE_LEN, utils::length_encode};
 use std::cmp;
 use turboshake::{TurboShake128, keccak, sponge};
 
@@ -23,11 +23,14 @@ impl KT128 {
     const RATE_BITS: usize = Self::KECCAK_STATE_BIT_LEN - Self::CAPACITY_BITS;
     const RATE_BYTES: usize = Self::RATE_BITS / u8::BITS as usize;
 
-    const B: usize = 8 * 1024; // 8kB
-
     const D_SEP_A: u8 = 0x07;
     const D_SEP_B: u8 = 0x0b;
     const D_SEP_C: u8 = 0x06;
+
+    const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
+    const PAD_B: [u8; 2] = [0xff, 0xff];
+
+    const CHAINING_VALUE_BYTE_LEN: usize = 32;
 
     /// Given message (M), customization string (C) and length of C encoded using `length_encode()`
     /// function ( s.t. only first `elen` bytes are of interest ), this routine extracts out `i` -th
@@ -47,40 +50,44 @@ impl KT128 {
     /// You may want to take a look at section 3.{2, 3} of the K12 specification
     /// https://keccak.team/files/KangarooTwelve.pdf for understanding why this function exists.
     #[inline(always)]
-    fn get_ith_chunk(i: usize, msg: &[u8], cstr: &[u8], enc: &[u8]) -> ([u8; Self::B], usize) {
+    fn get_ith_chunk<const NUM_CONTIGUOUS_BYTES_TO_READ: usize>(
+        i: usize,
+        msg: &[u8],
+        cstr: &[u8],
+        enc: &[u8],
+        chunk: &mut [u8; NUM_CONTIGUOUS_BYTES_TO_READ],
+    ) -> usize {
         let l0 = msg.len();
         let l1 = l0 + cstr.len();
         let l2 = l1 + enc.len();
 
-        let mut res = [0u8; Self::B];
-        let mut off = 0;
-
-        let start_at = i * Self::B;
+        let mut offset = 0;
+        let start_at = i * CHUNK_BYTE_LEN;
 
         if start_at < l0 {
-            let readable = cmp::min(l0 - start_at, Self::B);
-            res[..readable].copy_from_slice(&msg[start_at..(start_at + readable)]);
+            let readable = cmp::min(l0 - start_at, NUM_CONTIGUOUS_BYTES_TO_READ);
+            chunk[..readable].copy_from_slice(&msg[start_at..(start_at + readable)]);
 
-            off += readable;
+            offset += readable;
         }
 
-        if (off < Self::B) && ((start_at + off) < l1) {
-            let readable = cmp::min(l1 - (start_at + off), Self::B - off);
-            let tmp = (start_at + off) - l0;
-            res[off..(off + readable)].copy_from_slice(&cstr[tmp..(tmp + readable)]);
+        if (offset < NUM_CONTIGUOUS_BYTES_TO_READ) && ((start_at + offset) < l1) {
+            let readable = cmp::min(l1 - (start_at + offset), NUM_CONTIGUOUS_BYTES_TO_READ - offset);
+            let tmp = (start_at + offset) - l0;
+            chunk[offset..(offset + readable)].copy_from_slice(&cstr[tmp..(tmp + readable)]);
 
-            off += readable;
+            offset += readable;
         }
 
-        if (off < Self::B) && ((start_at + off) < l2) {
-            let readable = cmp::min(l2 - (start_at + off), Self::B - off);
-            let tmp = (start_at + off) - l1;
-            res[off..(off + readable)].copy_from_slice(&enc[tmp..(tmp + readable)]);
+        if (offset < NUM_CONTIGUOUS_BYTES_TO_READ) && ((start_at + offset) < l2) {
+            let readable = cmp::min(l2 - (start_at + offset), NUM_CONTIGUOUS_BYTES_TO_READ - offset);
+            let tmp = (start_at + offset) - l1;
+            chunk[offset..(offset + readable)].copy_from_slice(&enc[tmp..(tmp + readable)]);
 
-            off += readable;
+            offset += readable;
         }
 
-        (res, off)
+        offset
     }
 
     /// Given message (M) and customization string (C, which can be used for domain seperation)
@@ -97,13 +104,17 @@ impl KT128 {
     pub fn hash(msg: &[u8], cstr: &[u8]) -> Self {
         let (enc, elen) = length_encode(cstr.len());
         let tlen = msg.len() + cstr.len() + elen;
-        let n = tlen.div_ceil(Self::B);
 
-        if n == 1 {
+        let num_full_chunks = tlen / CHUNK_BYTE_LEN;
+        let num_total_chunks = tlen.div_ceil(CHUNK_BYTE_LEN);
+
+        let mut chunk = [0u8; CHUNK_BYTE_LEN];
+
+        if num_total_chunks == 1 {
             let mut state = [0u64; 25];
             let mut offset = 0;
 
-            let (chunk, clen) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
+            let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen], &mut chunk);
 
             sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
             sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_A }>(&mut state, &mut offset);
@@ -114,36 +125,84 @@ impl KT128 {
                 squeezable: Self::RATE_BYTES,
             }
         } else {
-            let mut state = [0u64; 25];
+            let mut cv_compressor_state = [0u64; keccak::LANE_CNT];
             let mut offset = 0;
 
-            let (chunk, _) = Self::get_ith_chunk(0, msg, cstr, &enc[..elen]);
-            const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
-            const PAD_B: [u8; 2] = [0xff, 0xff];
+            let mut chunk_idx = 0;
 
-            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk);
-            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_A);
+            let _ = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
+            chunk_idx += 1;
 
-            for i in 1..n {
-                let (chunk, clen) = Self::get_ith_chunk(i, msg, cstr, &enc[..elen]);
-                let mut cv = [0u8; 32];
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chunk);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &Self::PAD_A);
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            {
+                if is_x86_feature_detected!("avx2") {
+                    use crate::cv::cvx4;
+
+                    const SIMD_PARALLEL_FACTOR: usize = 4;
+
+                    let mut chunkx4 = [0u8; SIMD_PARALLEL_FACTOR * CHUNK_BYTE_LEN];
+                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLEL_FACTOR.wrapping_neg();
+
+                    while chunk_idx < simd_chunkable_till {
+                        let _ = Self::get_ith_chunk::<{ SIMD_PARALLEL_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunkx4);
+                        chunk_idx += SIMD_PARALLEL_FACTOR;
+
+                        let (cv0, cv1, cv2, cv3) =
+                            unsafe { cvx4::compute_chaining_valuex4::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(&chunkx4) };
+
+                        sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv0);
+                        sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv1);
+                        sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv2);
+                        sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv3);
+                    }
+                }
+
+                if is_x86_feature_detected!("sse2") {
+                    use crate::cv::cvx2;
+
+                    const SIMD_PARALLEL_FACTOR: usize = 2;
+
+                    let mut chunkx2 = [0u8; SIMD_PARALLEL_FACTOR * CHUNK_BYTE_LEN];
+                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLEL_FACTOR.wrapping_neg();
+
+                    while chunk_idx < simd_chunkable_till {
+                        let _ = Self::get_ith_chunk::<{ SIMD_PARALLEL_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunkx2);
+                        chunk_idx += SIMD_PARALLEL_FACTOR;
+
+                        let (cv0, cv1) =
+                            unsafe { cvx2::compute_chaining_valuex2::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(&chunkx2) };
+
+                        sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv0);
+                        sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv1);
+                    }
+                }
+            }
+
+            while chunk_idx < num_total_chunks {
+                let clen = Self::get_ith_chunk(chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
+                chunk_idx += 1;
+
+                let mut cv = [0u8; Self::CHAINING_VALUE_BYTE_LEN];
 
                 let mut hasher = TurboShake128::default();
                 let _ = hasher.absorb(&chunk[..clen]);
                 let _ = hasher.finalize::<{ Self::D_SEP_B }>();
                 let _ = hasher.squeeze(&mut cv);
 
-                sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &cv);
+                sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv);
             }
 
-            let (enc, elen) = length_encode(n - 1);
+            let (enc, elen) = length_encode(num_total_chunks - 1);
 
-            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &enc[..elen]);
-            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_B);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_C }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &enc[..elen]);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &Self::PAD_B);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_C }>(&mut cv_compressor_state, &mut offset);
 
             Self {
-                state,
+                state: cv_compressor_state,
                 is_ready: usize::MAX,
                 squeezable: Self::RATE_BYTES,
             }
