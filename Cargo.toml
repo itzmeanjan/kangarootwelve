@@ -30,14 +30,6 @@ multi_threaded = ["dep:rayon", "dep:num_cpus"]
 name = "kangarootwelve"
 harness = false
 
-[[bench]]
-name = "keccak"
-harness = false
-
-[[bench]]
-name = "chaining_value"
-harness = false
-
 [profile.optimized]
 inherits = "release"
 codegen-units = 1
