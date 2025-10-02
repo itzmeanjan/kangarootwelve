@@ -10,9 +10,7 @@ use std::arch::x86_64::*;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 #[allow(unused_unsafe)]
-pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
-    chunk: &[u8; 4 * CHUNK_BYTE_LEN],
-) -> ([u8; CV_SIZE], [u8; CV_SIZE], [u8; CV_SIZE], [u8; CV_SIZE]) {
+pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(chunk: &[u8], chaining_valuex4: &mut [u8]) {
     unsafe {
         let num_rate_bytes = NUM_RATE_BITS / u8::BITS as usize;
         let num_rate_words = NUM_RATE_BITS / turboshake::keccak::W;
@@ -95,10 +93,14 @@ pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARAT
 
         keccakx4::permute(&mut keccak_statex4);
 
-        let mut cv0 = [0u8; CV_SIZE];
-        let mut cv1 = [0u8; CV_SIZE];
-        let mut cv2 = [0u8; CV_SIZE];
-        let mut cv3 = [0u8; CV_SIZE];
+        let (cv0, cv1, cv2, cv3) = {
+            let (left, right) = chaining_valuex4.split_at_mut(2 * CV_SIZE);
+
+            let (cv0, cv1) = left.split_at_mut(CV_SIZE);
+            let (cv2, cv3) = right.split_at_mut(CV_SIZE);
+
+            (cv0, cv1, cv2, cv3)
+        };
 
         cv0.chunks_exact_mut(u8::BITS as usize)
             .zip(cv1.chunks_exact_mut(u8::BITS as usize))
@@ -116,8 +118,6 @@ pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARAT
                 cv2_word_bytes.copy_from_slice(&wordx4_as_bytes[16..24]);
                 cv3_word_bytes.copy_from_slice(&wordx4_as_bytes[24..]);
             });
-
-        (cv0, cv1, cv2, cv3)
     }
 }
 
@@ -182,13 +182,13 @@ mod test {
         let expected_cv2 = compute_cv_with_ts128(chunk2.try_into().expect("must not fail to convert slice to array reference"));
         let expected_cv3 = compute_cv_with_ts128(chunk3.try_into().expect("must not fail to convert slice to array reference"));
 
-        let (computed_cv0, computed_cv1, computed_cv2, computed_cv3) =
-            unsafe { cvx4::compute_chaining_valuex4::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(&chunk) };
+        let mut computed_cv = [0u8; 4 * TS128_CHAINING_VALUE_BYTE_LEN];
+        unsafe { cvx4::compute_chaining_valuex4::<TS128_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS128_CHAINING_VALUE_BYTE_LEN>(&chunk, &mut computed_cv) };
 
-        assert_eq!(expected_cv0, computed_cv0);
-        assert_eq!(expected_cv1, computed_cv1);
-        assert_eq!(expected_cv2, computed_cv2);
-        assert_eq!(expected_cv3, computed_cv3);
+        assert_eq!(expected_cv0, computed_cv[..TS128_CHAINING_VALUE_BYTE_LEN]);
+        assert_eq!(expected_cv1, computed_cv[TS128_CHAINING_VALUE_BYTE_LEN..2 * TS128_CHAINING_VALUE_BYTE_LEN]);
+        assert_eq!(expected_cv2, computed_cv[2 * TS128_CHAINING_VALUE_BYTE_LEN..3 * TS128_CHAINING_VALUE_BYTE_LEN]);
+        assert_eq!(expected_cv3, computed_cv[3 * TS128_CHAINING_VALUE_BYTE_LEN..]);
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -215,12 +215,12 @@ mod test {
         let expected_cv2 = compute_cv_with_ts256(chunk2.try_into().expect("must not fail to convert slice to array reference"));
         let expected_cv3 = compute_cv_with_ts256(chunk3.try_into().expect("must not fail to convert slice to array reference"));
 
-        let (computed_cv0, computed_cv1, computed_cv2, computed_cv3) =
-            unsafe { cvx4::compute_chaining_valuex4::<TS256_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS256_CHAINING_VALUE_BYTE_LEN>(&chunk) };
+        let mut computed_cv = [0u8; 4 * TS256_CHAINING_VALUE_BYTE_LEN];
+        unsafe { cvx4::compute_chaining_valuex4::<TS256_NUM_RATE_BITS, DOMAIN_SEPARATOR, TS256_CHAINING_VALUE_BYTE_LEN>(&chunk, &mut computed_cv) };
 
-        assert_eq!(expected_cv0, computed_cv0);
-        assert_eq!(expected_cv1, computed_cv1);
-        assert_eq!(expected_cv2, computed_cv2);
-        assert_eq!(expected_cv3, computed_cv3);
+        assert_eq!(expected_cv0, computed_cv[..TS256_CHAINING_VALUE_BYTE_LEN]);
+        assert_eq!(expected_cv1, computed_cv[TS256_CHAINING_VALUE_BYTE_LEN..2 * TS256_CHAINING_VALUE_BYTE_LEN]);
+        assert_eq!(expected_cv2, computed_cv[2 * TS256_CHAINING_VALUE_BYTE_LEN..3 * TS256_CHAINING_VALUE_BYTE_LEN]);
+        assert_eq!(expected_cv3, computed_cv[3 * TS256_CHAINING_VALUE_BYTE_LEN..]);
     }
 }
