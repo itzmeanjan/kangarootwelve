@@ -1,3 +1,6 @@
+pub mod cv;
+pub mod keccak;
+
 mod kt128;
 mod kt256;
 mod tests;
