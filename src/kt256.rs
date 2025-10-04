@@ -140,6 +140,33 @@ impl KT256 {
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             {
+                if is_x86_feature_detected!("avx512f") {
+                    use crate::cv::cvx8;
+
+                    const SIMD_PARALLELISM_FACTOR: usize = 8;
+                    let num_chunks_simd_computable = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
+
+                    if num_chunks_simd_computable > 0 {
+                        let mut chunkx8 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
+                        let mut chaining_valuex8 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
+
+                        let end_chunk_idx = chunk_idx + num_chunks_simd_computable;
+                        for i in (chunk_idx..end_chunk_idx).step_by(SIMD_PARALLELISM_FACTOR) {
+                            let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(i, msg, cstr, &enc[..elen], &mut chunkx8);
+
+                            unsafe {
+                                cvx8::compute_chaining_valuex8::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
+                                    &chunkx8,
+                                    &mut chaining_valuex8,
+                                )
+                            };
+                            sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chaining_valuex8);
+                        }
+
+                        chunk_idx = end_chunk_idx;
+                    }
+                }
+
                 if is_x86_feature_detected!("avx2") {
                     use crate::cv::cvx4;
 
@@ -267,7 +294,9 @@ impl KT256 {
             let simd_parallelism_factor: usize = {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 {
-                    if is_x86_feature_detected!("avx2") {
+                    if is_x86_feature_detected!("avx512f") {
+                        8
+                    } else if is_x86_feature_detected!("avx2") {
                         4
                     } else if is_x86_feature_detected!("sse2") {
                         2
@@ -307,6 +336,35 @@ impl KT256 {
 
                         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                         {
+                            if is_x86_feature_detected!("avx512f") {
+                                use crate::cv::cvx8;
+
+                                const SIMD_PARALLELISM_FACTOR: usize = 8;
+                                let mut chunkx8 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
+
+                                (local_chunk_idx_starts_at..local_chunk_idx_ends_at)
+                                    .step_by(SIMD_PARALLELISM_FACTOR)
+                                    .zip(chaining_values.chunks_exact_mut(num_cv_bytes_per_simd_compression))
+                                    .for_each(|(local_chunk_idx, chaining_valuex8)| {
+                                        let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(
+                                            local_chunk_idx,
+                                            msg,
+                                            cstr,
+                                            &enc[..elen],
+                                            &mut chunkx8,
+                                        );
+
+                                        unsafe {
+                                            cvx8::compute_chaining_valuex8::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
+                                                &chunkx8,
+                                                chaining_valuex8,
+                                            )
+                                        };
+                                    });
+
+                                return;
+                            }
+
                             if is_x86_feature_detected!("avx2") {
                                 use crate::cv::cvx4;
 
@@ -388,6 +446,33 @@ impl KT256 {
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             {
+                if is_x86_feature_detected!("avx512f") {
+                    use crate::cv::cvx8;
+
+                    const SIMD_PARALLELISM_FACTOR: usize = 8;
+                    let num_chunks_simd_computable = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
+
+                    if num_chunks_simd_computable > 0 {
+                        let mut chunkx8 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
+                        let mut chaining_valuex8 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
+
+                        let end_chunk_idx = chunk_idx + num_chunks_simd_computable;
+                        for i in (chunk_idx..end_chunk_idx).step_by(SIMD_PARALLELISM_FACTOR) {
+                            let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(i, msg, cstr, &enc[..elen], &mut chunkx8);
+
+                            unsafe {
+                                cvx8::compute_chaining_valuex8::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
+                                    &chunkx8,
+                                    &mut chaining_valuex8,
+                                )
+                            };
+                            sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chaining_valuex8);
+                        }
+
+                        chunk_idx = end_chunk_idx;
+                    }
+                }
+
                 if is_x86_feature_detected!("avx2") {
                     use crate::cv::cvx4;
 

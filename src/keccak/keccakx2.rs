@@ -2,19 +2,21 @@ use crate::keccak::consts::{RC, ROT};
 use turboshake::keccak;
 
 #[cfg(target_arch = "x86")]
-use std::arch::x86::{__m128i, _mm_andnot_si128, _mm_or_si128, _mm_set1_epi64x, _mm_setzero_si128, _mm_slli_epi64, _mm_srli_epi64, _mm_xor_si128};
+use std::arch::x86::*;
 
 #[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::{__m128i, _mm_andnot_si128, _mm_or_si128, _mm_set1_epi64x, _mm_setzero_si128, _mm_slli_epi64, _mm_srli_epi64, _mm_xor_si128};
+use std::arch::x86_64::*;
 
 /// Keccak-p\[1600\] permutation, applying 12 rounds permutation, on two states of dimension 5 x 5 x 64 ( = 1600 -bits ),
 /// using SSE2, following <https://github.com/itzmeanjan/turboshake/blob/ddc435053f9194d5d54b092604be89b023ddecaf/src/keccak.rs#L527-L540>.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "sse2")]
-pub fn permute(state: &mut [__m128i; keccak::LANE_CNT]) {
-    roundx4(state, 0);
-    roundx4(state, 4);
-    roundx4(state, 8);
+pub unsafe fn permute(state: &mut [__m128i; keccak::LANE_CNT]) {
+    unsafe {
+        roundx4(state, 0);
+        roundx4(state, 4);
+        roundx4(state, 8);
+    }
 }
 
 /// Keccak-p\[1600\] round function, applying all five step mapping functions in order, for four consecutive rounds, starting from round index `ridx`.
@@ -24,7 +26,7 @@ pub fn permute(state: &mut [__m128i; keccak::LANE_CNT]) {
 #[target_feature(enable = "sse2")]
 #[allow(unused_unsafe)]
 #[inline]
-fn roundx4(state: &mut [__m128i; keccak::LANE_CNT], ridx: usize) {
+unsafe fn roundx4(state: &mut [__m128i; keccak::LANE_CNT], ridx: usize) {
     unsafe {
         let mut c = [_mm_setzero_si128(); 5];
         let mut d = [_mm_setzero_si128(); 5];
@@ -443,10 +445,10 @@ mod test {
         use rand::Rng;
 
         #[cfg(target_arch = "x86")]
-        use std::arch::x86::{__m128i, _mm_cvtsi128_si64, _mm_set1_epi64x, _mm_srli_si128};
+        use std::arch::x86::*;
 
         #[cfg(target_arch = "x86_64")]
-        use std::arch::x86_64::{__m128i, _mm_cvtsi128_si64, _mm_set1_epi64x, _mm_srli_si128};
+        use std::arch::x86_64::*;
 
         if !is_x86_feature_detected!("sse2") {
             return;

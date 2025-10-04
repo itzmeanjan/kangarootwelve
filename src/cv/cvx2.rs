@@ -12,7 +12,7 @@ const CHUNKX2_BYTE_LEN: usize = 2 * CHUNK_BYTE_LEN;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "sse2")]
 #[allow(unused_unsafe)]
-pub fn compute_chaining_valuex2<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
+pub unsafe fn compute_chaining_valuex2<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
     chunkx2: &[u8; CHUNKX2_BYTE_LEN],
     chaining_valuex2: &mut [u8],
 ) {

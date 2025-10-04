@@ -12,7 +12,7 @@ const CHUNKX4_BYTE_LEN: usize = 4 * CHUNK_BYTE_LEN;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 #[allow(unused_unsafe)]
-pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
+pub unsafe fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
     chunkx4: &[u8; CHUNKX4_BYTE_LEN],
     chaining_valuex4: &mut [u8],
 ) {
