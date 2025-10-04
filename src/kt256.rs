@@ -341,7 +341,7 @@ impl KT256 {
                                 use crate::cv::cvx8;
 
                                 const SIMD_PARALLELISM_FACTOR: usize = 8;
-                                let mut chunkx8 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
+                                let mut chunkx8 = vec![0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
 
                                 (local_chunk_idx_starts_at..local_chunk_idx_ends_at)
                                     .step_by(SIMD_PARALLELISM_FACTOR)
@@ -352,12 +352,12 @@ impl KT256 {
                                             msg,
                                             cstr,
                                             &enc[..elen],
-                                            &mut chunkx8,
+                                            unsafe { chunkx8.as_mut_slice().try_into().unwrap_unchecked() },
                                         );
 
                                         unsafe {
                                             cvx8::compute_chaining_valuex8::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
-                                                &chunkx8,
+                                                chunkx8.as_slice().try_into().unwrap_unchecked(),
                                                 chaining_valuex8,
                                             )
                                         };
@@ -370,7 +370,7 @@ impl KT256 {
                                 use crate::cv::cvx4;
 
                                 const SIMD_PARALLELISM_FACTOR: usize = 4;
-                                let mut chunkx4 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
+                                let mut chunkx4 = vec![0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
 
                                 (local_chunk_idx_starts_at..local_chunk_idx_ends_at)
                                     .step_by(SIMD_PARALLELISM_FACTOR)
@@ -381,12 +381,12 @@ impl KT256 {
                                             msg,
                                             cstr,
                                             &enc[..elen],
-                                            &mut chunkx4,
+                                            unsafe { chunkx4.as_mut_slice().try_into().unwrap_unchecked() },
                                         );
 
                                         unsafe {
                                             cvx4::compute_chaining_valuex4::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
-                                                &chunkx4,
+                                                chunkx4.as_slice().try_into().unwrap(),
                                                 chaining_valuex4,
                                             )
                                         };
@@ -399,7 +399,7 @@ impl KT256 {
                                 use crate::cv::cvx2;
 
                                 const SIMD_PARALLELISM_FACTOR: usize = 2;
-                                let mut chunkx2 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
+                                let mut chunkx2 = vec![0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
 
                                 (local_chunk_idx_starts_at..local_chunk_idx_ends_at)
                                     .step_by(SIMD_PARALLELISM_FACTOR)
@@ -410,12 +410,12 @@ impl KT256 {
                                             msg,
                                             cstr,
                                             &enc[..elen],
-                                            &mut chunkx2,
+                                            unsafe { chunkx2.as_mut_slice().try_into().unwrap_unchecked() },
                                         );
 
                                         unsafe {
                                             cvx2::compute_chaining_valuex2::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
-                                                &chunkx2,
+                                                chunkx2.as_slice().try_into().unwrap(),
                                                 chaining_valuex2,
                                             )
                                         };
