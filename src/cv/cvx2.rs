@@ -7,10 +7,15 @@ use std::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
+const CHUNKX2_BYTE_LEN: usize = 2 * CHUNK_BYTE_LEN;
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "sse2")]
 #[allow(unused_unsafe)]
-pub fn compute_chaining_valuex2<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(chunk: &[u8], chaining_valuex2: &mut [u8]) {
+pub fn compute_chaining_valuex2<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
+    chunkx2: &[u8; CHUNKX2_BYTE_LEN],
+    chaining_valuex2: &mut [u8],
+) {
     unsafe {
         let num_rate_bytes = NUM_RATE_BITS / u8::BITS as usize;
         let num_rate_words = NUM_RATE_BITS / turboshake::keccak::W;
@@ -20,7 +25,7 @@ pub fn compute_chaining_valuex2<const NUM_RATE_BITS: usize, const DOMAIN_SEPARAT
 
         let mut keccak_statex2 = [_mm_setzero_si128(); turboshake::keccak::LANE_CNT];
 
-        let (chunk0, chunk1) = chunk.split_at(CHUNK_BYTE_LEN);
+        let (chunk0, chunk1) = chunkx2.split_at(CHUNK_BYTE_LEN);
 
         let mut chunk0_iter = chunk0.chunks_exact(num_rate_bytes);
         let mut chunk1_iter = chunk1.chunks_exact(num_rate_bytes);

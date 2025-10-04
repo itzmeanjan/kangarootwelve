@@ -1,6 +1,7 @@
+use crate::cv::cvx1;
 use crate::{cv::consts::CHUNK_BYTE_LEN, utils::length_encode};
 use std::cmp;
-use turboshake::{TurboShake128, keccak, sponge};
+use turboshake::{keccak, sponge};
 
 #[cfg(feature = "multi_threaded")]
 use rayon::{ThreadPoolBuilder, prelude::*};
@@ -109,12 +110,11 @@ impl KT128 {
         let num_full_chunks = tlen / CHUNK_BYTE_LEN;
         let num_total_chunks = tlen.div_ceil(CHUNK_BYTE_LEN);
 
-        let mut chunk = [0u8; CHUNK_BYTE_LEN];
-
         if num_total_chunks == 1 {
             let mut state = [0u64; keccak::LANE_CNT];
             let mut offset = 0;
 
+            let mut chunk = [0u8; CHUNK_BYTE_LEN];
             let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen], &mut chunk);
 
             sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
@@ -129,6 +129,7 @@ impl KT128 {
             let mut cv_compressor_state = [0u64; keccak::LANE_CNT];
             let mut offset = 0;
 
+            let mut chunk = [0u8; CHUNK_BYTE_LEN];
             let mut chunk_idx = 0;
 
             let _ = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
@@ -143,11 +144,10 @@ impl KT128 {
                     use crate::cv::cvx4;
 
                     const SIMD_PARALLELISM_FACTOR: usize = 4;
+                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     let mut chunkx4 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
                     let mut chaining_valuex4 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
-
-                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     while chunk_idx < simd_chunkable_till {
                         let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunkx4);
@@ -159,7 +159,6 @@ impl KT128 {
                                 &mut chaining_valuex4,
                             )
                         };
-
                         sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chaining_valuex4);
                     }
                 }
@@ -168,11 +167,10 @@ impl KT128 {
                     use crate::cv::cvx2;
 
                     const SIMD_PARALLELISM_FACTOR: usize = 2;
+                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     let mut chunkx2 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
                     let mut chaining_valuex2 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
-
-                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     while chunk_idx < simd_chunkable_till {
                         let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunkx2);
@@ -184,23 +182,17 @@ impl KT128 {
                                 &mut chaining_valuex2,
                             )
                         };
-
                         sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chaining_valuex2);
                     }
                 }
             }
 
-            while chunk_idx < num_total_chunks {
-                let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
-                chunk_idx += 1;
+            let mut cv = [0u8; Self::CHAINING_VALUE_BYTE_LEN];
 
-                let mut cv = [0u8; Self::CHAINING_VALUE_BYTE_LEN];
+            for i in chunk_idx..num_total_chunks {
+                let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(i, msg, cstr, &enc[..elen], &mut chunk);
 
-                let mut hasher = TurboShake128::default();
-                let _ = hasher.absorb(&chunk[..clen]);
-                let _ = hasher.finalize::<{ Self::D_SEP_B }>();
-                let _ = hasher.squeeze(&mut cv);
-
+                cvx1::compute_chaining_value::<{ Self::RATE_BYTES }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(&chunk[..clen], &mut cv);
                 sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv);
             }
 
@@ -236,12 +228,11 @@ impl KT128 {
         let num_full_chunks = tlen / CHUNK_BYTE_LEN;
         let num_total_chunks = tlen.div_ceil(CHUNK_BYTE_LEN);
 
-        let mut chunk = [0u8; CHUNK_BYTE_LEN];
-
         if num_total_chunks == 1 {
             let mut state = [0u64; keccak::LANE_CNT];
             let mut offset = 0;
 
+            let mut chunk = [0u8; CHUNK_BYTE_LEN];
             let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen], &mut chunk);
 
             sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
@@ -256,6 +247,7 @@ impl KT128 {
             let mut cv_compressor_state = [0u64; keccak::LANE_CNT];
             let mut offset = 0;
 
+            let mut chunk = [0u8; CHUNK_BYTE_LEN];
             let mut chunk_idx = 0;
 
             let _ = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(0, msg, cstr, &enc[..elen], &mut chunk);
@@ -305,8 +297,6 @@ impl KT128 {
                         let local_chunk_idx_starts_at = chunk_idx + (simd_compression_idx_starts_at * simd_parallelism_factor);
                         let local_chunk_idx_ends_at = local_chunk_idx_starts_at + num_local_chunks;
 
-                        let mut local_chunk_idx = local_chunk_idx_starts_at;
-
                         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                         {
                             if is_x86_feature_detected!("avx2") {
@@ -315,26 +305,25 @@ impl KT128 {
                                 const SIMD_PARALLELISM_FACTOR: usize = 4;
                                 let mut chunkx4 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
 
-                                let mut cv_bytes_offset = 0;
-                                while local_chunk_idx < local_chunk_idx_ends_at {
-                                    let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(
-                                        local_chunk_idx,
-                                        msg,
-                                        cstr,
-                                        &enc[..elen],
-                                        &mut chunkx4,
-                                    );
-                                    local_chunk_idx += simd_parallelism_factor;
+                                (local_chunk_idx_starts_at..local_chunk_idx_ends_at)
+                                    .step_by(SIMD_PARALLELISM_FACTOR)
+                                    .zip(chaining_values.chunks_exact_mut(num_cv_bytes_per_simd_compression))
+                                    .for_each(|(local_chunk_idx, chaining_valuex4)| {
+                                        let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(
+                                            local_chunk_idx,
+                                            msg,
+                                            cstr,
+                                            &enc[..elen],
+                                            &mut chunkx4,
+                                        );
 
-                                    unsafe {
-                                        cvx4::compute_chaining_valuex4::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
-                                            &chunkx4,
-                                            &mut chaining_values[cv_bytes_offset..(cv_bytes_offset + num_cv_bytes_per_simd_compression)],
-                                        )
-                                    };
-
-                                    cv_bytes_offset += num_cv_bytes_per_simd_compression;
-                                }
+                                        unsafe {
+                                            cvx4::compute_chaining_valuex4::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
+                                                &chunkx4,
+                                                chaining_valuex4,
+                                            )
+                                        };
+                                    });
 
                                 return;
                             }
@@ -345,26 +334,25 @@ impl KT128 {
                                 const SIMD_PARALLELISM_FACTOR: usize = 2;
                                 let mut chunkx2 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
 
-                                let mut cv_bytes_offset = 0;
-                                while local_chunk_idx < local_chunk_idx_ends_at {
-                                    let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(
-                                        local_chunk_idx,
-                                        msg,
-                                        cstr,
-                                        &enc[..elen],
-                                        &mut chunkx2,
-                                    );
-                                    local_chunk_idx += simd_parallelism_factor;
+                                (local_chunk_idx_starts_at..local_chunk_idx_ends_at)
+                                    .step_by(SIMD_PARALLELISM_FACTOR)
+                                    .zip(chaining_values.chunks_exact_mut(num_cv_bytes_per_simd_compression))
+                                    .for_each(|(local_chunk_idx, chaining_valuex2)| {
+                                        let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(
+                                            local_chunk_idx,
+                                            msg,
+                                            cstr,
+                                            &enc[..elen],
+                                            &mut chunkx2,
+                                        );
 
-                                    unsafe {
-                                        cvx2::compute_chaining_valuex2::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
-                                            &chunkx2,
-                                            &mut chaining_values[cv_bytes_offset..(cv_bytes_offset + num_cv_bytes_per_simd_compression)],
-                                        )
-                                    };
-
-                                    cv_bytes_offset += num_cv_bytes_per_simd_compression;
-                                }
+                                        unsafe {
+                                            cvx2::compute_chaining_valuex2::<{ Self::RATE_BITS }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
+                                                &chunkx2,
+                                                chaining_valuex2,
+                                            )
+                                        };
+                                    });
 
                                 return;
                             }
@@ -372,18 +360,15 @@ impl KT128 {
 
                         let mut chunk = [0u8; CHUNK_BYTE_LEN];
 
-                        let mut cv_bytes_offset = 0;
-                        while local_chunk_idx < local_chunk_idx_ends_at {
-                            let _ = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(local_chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
-                            local_chunk_idx += 1;
-
-                            let mut hasher = TurboShake128::default();
-                            let _ = hasher.absorb(&chunk);
-                            let _ = hasher.finalize::<{ Self::D_SEP_B }>();
-                            let _ = hasher.squeeze(&mut chaining_values[cv_bytes_offset..(cv_bytes_offset + Self::CHAINING_VALUE_BYTE_LEN)]);
-
-                            cv_bytes_offset += Self::CHAINING_VALUE_BYTE_LEN;
-                        }
+                        (local_chunk_idx_starts_at..local_chunk_idx_ends_at)
+                            .zip(chaining_values.chunks_exact_mut(Self::CHAINING_VALUE_BYTE_LEN))
+                            .for_each(|(local_chunk_idx, chaining_value)| {
+                                let _ = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(local_chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
+                                cvx1::compute_chaining_value::<{ Self::RATE_BYTES }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(
+                                    &chunk,
+                                    chaining_value.try_into().unwrap(),
+                                );
+                            });
                     });
 
                     chunk_idx += num_simd_compressions * simd_parallelism_factor;
@@ -399,11 +384,10 @@ impl KT128 {
                     use crate::cv::cvx4;
 
                     const SIMD_PARALLELISM_FACTOR: usize = 4;
+                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     let mut chunkx4 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
                     let mut chaining_valuex4 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
-
-                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     while chunk_idx < simd_chunkable_till {
                         let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunkx4);
@@ -415,7 +399,6 @@ impl KT128 {
                                 &mut chaining_valuex4,
                             )
                         };
-
                         sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chaining_valuex4);
                     }
                 }
@@ -424,11 +407,10 @@ impl KT128 {
                     use crate::cv::cvx2;
 
                     const SIMD_PARALLELISM_FACTOR: usize = 2;
+                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     let mut chunkx2 = [0u8; SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN];
                     let mut chaining_valuex2 = [0u8; SIMD_PARALLELISM_FACTOR * Self::CHAINING_VALUE_BYTE_LEN];
-
-                    let simd_chunkable_till = (num_full_chunks - chunk_idx) & SIMD_PARALLELISM_FACTOR.wrapping_neg();
 
                     while chunk_idx < simd_chunkable_till {
                         let _ = Self::get_ith_chunk::<{ SIMD_PARALLELISM_FACTOR * CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunkx2);
@@ -440,23 +422,17 @@ impl KT128 {
                                 &mut chaining_valuex2,
                             )
                         };
-
                         sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &chaining_valuex2);
                     }
                 }
             }
 
-            while chunk_idx < num_total_chunks {
-                let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(chunk_idx, msg, cstr, &enc[..elen], &mut chunk);
-                chunk_idx += 1;
+            let mut cv = [0u8; Self::CHAINING_VALUE_BYTE_LEN];
 
-                let mut cv = [0u8; Self::CHAINING_VALUE_BYTE_LEN];
+            for i in chunk_idx..num_total_chunks {
+                let clen = Self::get_ith_chunk::<{ CHUNK_BYTE_LEN }>(i, msg, cstr, &enc[..elen], &mut chunk);
 
-                let mut hasher = TurboShake128::default();
-                let _ = hasher.absorb(&chunk[..clen]);
-                let _ = hasher.finalize::<{ Self::D_SEP_B }>();
-                let _ = hasher.squeeze(&mut cv);
-
+                cvx1::compute_chaining_value::<{ Self::RATE_BYTES }, { Self::D_SEP_B }, { Self::CHAINING_VALUE_BYTE_LEN }>(&chunk[..clen], &mut cv);
                 sponge::absorb::<{ Self::RATE_BYTES }>(&mut cv_compressor_state, &mut offset, &cv);
             }
 

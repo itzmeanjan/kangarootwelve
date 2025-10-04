@@ -7,10 +7,15 @@ use std::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
+const CHUNKX4_BYTE_LEN: usize = 4 * CHUNK_BYTE_LEN;
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 #[allow(unused_unsafe)]
-pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(chunk: &[u8], chaining_valuex4: &mut [u8]) {
+pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARATOR: u8, const CV_SIZE: usize>(
+    chunkx4: &[u8; CHUNKX4_BYTE_LEN],
+    chaining_valuex4: &mut [u8],
+) {
     unsafe {
         let num_rate_bytes = NUM_RATE_BITS / u8::BITS as usize;
         let num_rate_words = NUM_RATE_BITS / turboshake::keccak::W;
@@ -21,7 +26,7 @@ pub fn compute_chaining_valuex4<const NUM_RATE_BITS: usize, const DOMAIN_SEPARAT
         let mut keccak_statex4 = [_mm256_setzero_si256(); turboshake::keccak::LANE_CNT];
 
         let (chunk0, chunk1, chunk2, chunk3) = {
-            let (left, right) = chunk.split_at(2 * CHUNK_BYTE_LEN);
+            let (left, right) = chunkx4.split_at(2 * CHUNK_BYTE_LEN);
 
             let (chunk0, chunk1) = left.split_at(CHUNK_BYTE_LEN);
             let (chunk2, chunk3) = right.split_at(CHUNK_BYTE_LEN);
