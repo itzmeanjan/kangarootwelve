@@ -107,7 +107,6 @@ impl KT128 {
         let (enc, elen) = length_encode(cstr.len());
         let tlen = msg.len() + cstr.len() + elen;
 
-        let num_full_chunks = tlen / CHUNK_BYTE_LEN;
         let num_total_chunks = tlen.div_ceil(CHUNK_BYTE_LEN);
 
         if num_total_chunks == 1 {
@@ -140,6 +139,8 @@ impl KT128 {
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             {
+                let num_full_chunks = tlen / CHUNK_BYTE_LEN;
+
                 if is_x86_feature_detected!("avx512f") {
                     use crate::cv::cvx8;
 
