@@ -36,8 +36,12 @@ coverage: ## Generates HTML code coverage report, using `cargo-tarpaulin`
 
 .PHONY: bench
 bench: ## Run all benchmarks
-	RUSTFLAGS="-C target-cpu=native" cargo bench --profile optimized
-	RUSTFLAGS="-C target-cpu=native" cargo bench --profile optimized --features multi_threaded
+	RUSTFLAGS="-C target-cpu=native" cargo criterion
+	RUSTFLAGS="-C target-cpu=native" cargo criterion --features multi_threaded
+
+.PHONY: bench-cuda
+bench-cuda: ## Run all benchmarks against the CUDA backend
+	RUSTFLAGS="-C target-cpu=native" cargo criterion --features cuda
 
 .PHONY: clean
 clean: ## Removes cargo target directory
