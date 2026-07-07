@@ -21,6 +21,10 @@ test: ## Run all tests
 	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --profile test-release
 	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --profile test-release --features multi_threaded
 
+.PHONY: test-cuda
+test-cuda: ## Run all tests against the CUDA backend
+	$(BACKTRACE) cargo test --profile test-release --features cuda
+
 .PHONY: test-wasm
 test-wasm: ## Run all tests in WASM environment
 	$(BACKTRACE) cargo test --target wasm32-wasip1 --profile test-release --no-default-features
