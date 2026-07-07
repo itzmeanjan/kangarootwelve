@@ -1,5 +1,5 @@
 # Taken from https://github.com/itzmeanjan/ChalametPIR/blob/68e6e0e440be1d2ee9d57338052a421ec9f30113/.github/workflows/test_ci.yml
-name: Test KangarooTwelve (K12)
+name: Test KangarooTwelve
 
 on:
   push:
