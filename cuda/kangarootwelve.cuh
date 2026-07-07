@@ -59,6 +59,40 @@ length_encode_host(uint64_t x, uint8_t res[9])
   return (size_t)l + 1;
 }
 
+template<size_t B>
+inline size_t
+get_ith_chunk(size_t i, const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, const uint8_t* enc, size_t elen, uint8_t out[B])
+{
+  const size_t l0 = mlen;
+  const size_t l1 = l0 + clen;
+  const size_t l2 = l1 + elen;
+
+  const size_t start_at = i * B;
+  size_t off = 0;
+
+  if (start_at < l0) {
+    const size_t readable = ((l0 - start_at) < B) ? (l0 - start_at) : B;
+    memcpy(out, msg + start_at, readable);
+    off += readable;
+  }
+
+  if ((off < B) && ((start_at + off) < l1)) {
+    const size_t readable = ((l1 - (start_at + off)) < (B - off)) ? (l1 - (start_at + off)) : (B - off);
+    const size_t tmp = (start_at + off) - l0;
+    memcpy(out + off, cstr + tmp, readable);
+    off += readable;
+  }
+
+  if ((off < B) && ((start_at + off) < l2)) {
+    const size_t readable = ((l2 - (start_at + off)) < (B - off)) ? (l2 - (start_at + off)) : (B - off);
+    const size_t tmp = (start_at + off) - l1;
+    memcpy(out + off, enc + tmp, readable);
+    off += readable;
+  }
+
+  return off;
+}
+
 template<size_t RATE>
 __global__ void
 single_node_kernel(const uint8_t* S, size_t tlen, uint8_t* state_out)
@@ -113,14 +147,17 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
   const size_t elen = length_encode_host(clen, enc);
   const size_t tlen = mlen + clen + elen;
 
-  std::vector<uint8_t> S(tlen);
-  if (mlen) {
-    memcpy(S.data(), msg, mlen);
-  }
-  if (clen) {
-    memcpy(S.data() + mlen, cstr, clen);
-  }
-  memcpy(S.data() + mlen + clen, enc, elen);
+  const auto copy_S_to_device = [&](uint8_t* dS) -> int {
+    if (mlen) {
+      KT_TRY(cudaMemcpy(dS, msg, mlen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+    }
+    if (clen) {
+      KT_TRY(cudaMemcpy(dS + mlen, cstr, clen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+    }
+    KT_TRY(cudaMemcpy(dS + mlen + clen, enc, elen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+
+    return KT_OK;
+  };
 
   const size_t n = (tlen + CHUNK_BYTE_LEN - 1) / CHUNK_BYTE_LEN;
 
@@ -131,7 +168,12 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
     const int status = [&]() -> int {
       KT_TRY(cudaMalloc(&dS, tlen), KT_ERR_ALLOC);
       KT_TRY(cudaMalloc(&dState, keccak::LANE_COUNT * 8), KT_ERR_ALLOC);
-      KT_TRY(cudaMemcpy(dS, S.data(), tlen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+      {
+        const int rc = copy_S_to_device(dS);
+        if (rc != KT_OK) {
+          return rc;
+        }
+      }
 
       single_node_kernel<RATE><<<1, 1>>>(dS, tlen, dState);
       KT_TRY(cudaGetLastError(), KT_ERR_KERNEL);
@@ -154,15 +196,29 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
   const size_t nb = (leaves + LEAVES_PER_BATCH - 1) / LEAVES_PER_BATCH;
   const int depth = (nb < (size_t)PIPELINE_DEPTH) ? (int)nb : PIPELINE_DEPTH;
 
+  const uint8_t* head = msg;
+  uint8_t head_buf[CHUNK_BYTE_LEN] = { 0 };
+
+  if (mlen < CHUNK_BYTE_LEN) {
+    get_ith_chunk<CHUNK_BYTE_LEN>(0, msg, mlen, cstr, clen, enc, elen, head_buf);
+    head = head_buf;
+  }
+
   uint8_t* dS = nullptr;
   uint8_t* dCV = nullptr;
+
   std::vector<cudaStream_t> streams;
   std::vector<cudaEvent_t> events;
   std::vector<uint8_t*> hbuf;
 
   const int status = [&]() -> int {
     KT_TRY(cudaMalloc(&dS, tlen), KT_ERR_ALLOC);
-    KT_TRY(cudaMemcpy(dS, S.data(), tlen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+    {
+      const int rc = copy_S_to_device(dS);
+      if (rc != KT_OK) {
+        return rc;
+      }
+    }
     KT_TRY(cudaMalloc(&dCV, leaves * CVLEN), KT_ERR_ALLOC);
 
     for (int s = 0; s < depth; s++) {
@@ -212,7 +268,7 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
     uint64_t state[keccak::LANE_COUNT] = {};
     size_t offset = 0;
 
-    sponge::absorb(state, &offset, S.data(), CHUNK_BYTE_LEN, RATE);
+    sponge::absorb(state, &offset, head, CHUNK_BYTE_LEN, RATE);
     sponge::absorb(state, &offset, padA, 8, RATE);
 
     for (int s = 0; s < depth; s++) {
