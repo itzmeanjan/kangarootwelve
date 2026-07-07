@@ -25,60 +25,6 @@ impl KT128 {
     const D_SEP_B: u8 = 0x0b;
     const D_SEP_C: u8 = 0x06;
 
-    /// Given message (M), customization string (C) and length of C encoded using `length_encode()`
-    /// function ( s.t. only first `elen` bytes are of interest ), this routine extracts out `i` -th
-    /// chunk ( s.t. each chunk is `B` -bytes wide ) along with how many ( must be <= B ) bytes
-    /// of that chunk are of significance.
-    ///
-    /// For understanding how this function works, let us assume
-    ///
-    /// S <- M || C || length_encode(|C|) s.t. |C| <- byte length of C
-    ///
-    /// We can split S into `n` -chunks s.t. first (n - 1) chunks are of length B while the
-    /// last one is of length <= B. So n = ⌈|S|/ B⌉
-    ///
-    /// n must be 1, because it's guaranteed that S will be atleast 1 -byte wide even if both M
-    /// and C are empty. Then it must be the case that 0 <= i < n.
-    ///
-    /// You may want to take a look at section 3.{2, 3} of the K12 specification
-    /// https://keccak.team/files/KangarooTwelve.pdf for understanding why this function exists.
-    #[inline(always)]
-    fn get_ith_chunk(i: usize, msg: &[u8], cstr: &[u8], enc: &[u8]) -> ([u8; Self::B], usize) {
-        let l0 = msg.len();
-        let l1 = l0 + cstr.len();
-        let l2 = l1 + enc.len();
-
-        let mut res = [0u8; Self::B];
-        let mut off = 0;
-
-        let start_at = i * Self::B;
-
-        if start_at < l0 {
-            let readable = cmp::min(l0 - start_at, Self::B);
-            res[..readable].copy_from_slice(&msg[start_at..(start_at + readable)]);
-
-            off += readable;
-        }
-
-        if (off < Self::B) && ((start_at + off) < l1) {
-            let readable = cmp::min(l1 - (start_at + off), Self::B - off);
-            let tmp = (start_at + off) - l0;
-            res[off..(off + readable)].copy_from_slice(&cstr[tmp..(tmp + readable)]);
-
-            off += readable;
-        }
-
-        if (off < Self::B) && ((start_at + off) < l2) {
-            let readable = cmp::min(l2 - (start_at + off), Self::B - off);
-            let tmp = (start_at + off) - l1;
-            res[off..(off + readable)].copy_from_slice(&enc[tmp..(tmp + readable)]);
-
-            off += readable;
-        }
-
-        (res, off)
-    }
-
     /// Given message (M) and customization string (C, which can be used for domain seperation)
     /// this routine consumes both of them into Keccak\[256\] sponge state, using single thread,
     /// in chunks of B -bytes s.t. returned KT128 object can be used for squeezing arbitrary number
@@ -89,7 +35,7 @@ impl KT128 {
     /// crate to use `multi_threaded` feature.
     ///
     /// You can use this function for oneshot hashing i.e. when all the input bytes are ready to be consumed.
-    #[cfg(not(feature = "multi_threaded"))]
+    #[cfg(not(any(feature = "cuda", feature = "multi_threaded")))]
     pub fn hash(msg: &[u8], cstr: &[u8]) -> Self {
         let (enc, elen) = length_encode(cstr.len());
         let tlen = msg.len() + cstr.len() + elen;
@@ -220,6 +166,17 @@ impl KT128 {
         }
     }
 
+    #[cfg(feature = "cuda")]
+    pub fn hash(msg: &[u8], cstr: &[u8]) -> Self {
+        let state = crate::cuda::kt128_absorb_state(msg, cstr).unwrap_or_else(|e| panic!("KT128 GPU hashing failed: {e}"));
+
+        Self {
+            state,
+            is_ready: usize::MAX,
+            squeezable: Self::RATE_BYTES,
+        }
+    }
+
     /// Given that N -bytes input message ( along with customization string ) is already
     /// absorbed into sponge state, this routine is used for squeezing M -bytes out of
     /// consumable part of the sponge state ( i.e. rate portion of the state ).
@@ -233,5 +190,59 @@ impl KT128 {
         }
 
         sponge::squeeze::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut self.state, &mut self.squeezable, out);
+    }
+
+    /// Given message (M), customization string (C) and length of C encoded using `length_encode()`
+    /// function ( s.t. only first `elen` bytes are of interest ), this routine extracts out `i` -th
+    /// chunk ( s.t. each chunk is `B` -bytes wide ) along with how many ( must be <= B ) bytes
+    /// of that chunk are of significance.
+    ///
+    /// For understanding how this function works, let us assume
+    ///
+    /// S <- M || C || length_encode(|C|) s.t. |C| <- byte length of C
+    ///
+    /// We can split S into `n` -chunks s.t. first (n - 1) chunks are of length B while the
+    /// last one is of length <= B. So n = ⌈|S|/ B⌉
+    ///
+    /// n must be 1, because it's guaranteed that S will be atleast 1 -byte wide even if both M
+    /// and C are empty. Then it must be the case that 0 <= i < n.
+    ///
+    /// You may want to take a look at section 3.{2, 3} of the K12 specification
+    /// https://keccak.team/files/KangarooTwelve.pdf for understanding why this function exists.
+    #[inline(always)]
+    fn get_ith_chunk(i: usize, msg: &[u8], cstr: &[u8], enc: &[u8]) -> ([u8; Self::B], usize) {
+        let l0 = msg.len();
+        let l1 = l0 + cstr.len();
+        let l2 = l1 + enc.len();
+
+        let mut res = [0u8; Self::B];
+        let mut off = 0;
+
+        let start_at = i * Self::B;
+
+        if start_at < l0 {
+            let readable = cmp::min(l0 - start_at, Self::B);
+            res[..readable].copy_from_slice(&msg[start_at..(start_at + readable)]);
+
+            off += readable;
+        }
+
+        if (off < Self::B) && ((start_at + off) < l1) {
+            let readable = cmp::min(l1 - (start_at + off), Self::B - off);
+            let tmp = (start_at + off) - l0;
+            res[off..(off + readable)].copy_from_slice(&cstr[tmp..(tmp + readable)]);
+
+            off += readable;
+        }
+
+        if (off < Self::B) && ((start_at + off) < l2) {
+            let readable = cmp::min(l2 - (start_at + off), Self::B - off);
+            let tmp = (start_at + off) - l1;
+            res[off..(off + readable)].copy_from_slice(&enc[tmp..(tmp + readable)]);
+
+            off += readable;
+        }
+
+        (res, off)
     }
 }

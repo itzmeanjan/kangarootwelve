@@ -12,6 +12,7 @@ repository = "https://github.com/itzmeanjan/kangarootwelve.git"
 license = "MIT"
 keywords = ["keccak", "xof", "turboshake", "kangarootwelve", "k12"]
 categories = ["cryptography"]
+build = "build.rs"
 
 [dependencies]
 turboshake = { version = "=0.1.4", features = ["dev"] }
@@ -25,6 +26,7 @@ rand = "=0.9.2"
 
 [features]
 multi_threaded = ["dep:rayon", "dep:num_cpus"]
+cuda = []
 
 [[bench]]
 name = "kangarootwelve"
