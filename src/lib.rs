@@ -9,5 +9,5 @@ mod kt256;
 mod tests;
 mod utils;
 
-pub use kt128::KT128;
-pub use kt256::KT256;
+pub use kt128::{KT128, KT128XOF};
+pub use kt256::{KT256, KT256XOF};
