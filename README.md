@@ -14,7 +14,7 @@ Here I'm developing/ maintaining a Rust library which implements KangarooTwelve 
 
 ## Prerequisites
 
-Rust stable toolchain; see https://rustup.rs for installation guide. MSRV for this crate is 1.85.0.
+Rust stable toolchain; see https://rustup.rs for installation guide. MSRV for this crate is 1.86.0.
 
 ```bash
 # When developing this library, I was using
