@@ -14,15 +14,15 @@ pub struct KT256;
 
 #[derive(Copy, Clone)]
 pub struct KT256XOF {
-    state: [u64; 25],
+    state: [u64; turboshake::keccak::LANE_CNT],
     squeezable: usize,
 }
 
 impl KT256 {
     const CAPACITY_BITS: usize = 512;
-    const RATE_BITS: usize = 1600 - Self::CAPACITY_BITS;
-    const RATE_BYTES: usize = Self::RATE_BITS / 8;
-    const RATE_WORDS: usize = Self::RATE_BYTES / 8;
+    const KECCAK_STATE_BIT_WIDTH: usize = turboshake::keccak::LANE_CNT * turboshake::keccak::W;
+    const RATE_BITS: usize = Self::KECCAK_STATE_BIT_WIDTH - Self::CAPACITY_BITS;
+    const RATE_BYTES: usize = Self::RATE_BITS / u8::BITS as usize;
     const B: usize = 8192;
     const D_SEP_A: u8 = 0x07;
     const D_SEP_B: u8 = 0x0b;
@@ -45,46 +45,48 @@ impl KT256 {
         let n = tlen.div_ceil(Self::B);
 
         if n == 1 {
-            let mut state = [0u64; 25];
+            let mut state = [0u64; turboshake::keccak::LANE_CNT];
             let mut offset = 0;
 
             let (chunk, clen) = get_ith_chunk::<{ Self::B }>(0, msg, cstr, &enc[..elen]);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk[..clen]);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_A }>(&mut state, &mut offset);
 
             KT256XOF {
                 state,
                 squeezable: Self::RATE_BYTES,
             }
         } else {
-            let mut state = [0u64; 25];
+            let mut state = [0u64; turboshake::keccak::LANE_CNT];
             let mut offset = 0;
 
             let (chunk, _) = get_ith_chunk::<{ Self::B }>(0, msg, cstr, &enc[..elen]);
             const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
             const PAD_B: [u8; 2] = [0xff, 0xff];
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk);
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_A);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_A);
 
             for i in 1..n {
                 let (chunk, clen) = get_ith_chunk::<{ Self::B }>(i, msg, cstr, &enc[..elen]);
                 let mut cv = [0u8; 64];
 
-                let mut hasher = TurboShake256::new();
-                hasher.absorb(&chunk[..clen]);
-                hasher.finalize::<{ Self::D_SEP_B }>();
-                hasher.squeeze(&mut cv);
+                unsafe {
+                    let mut hasher = TurboShake256::default();
+                    hasher.absorb(&chunk[..clen]).unwrap_unchecked();
+                    hasher.finalize::<{ Self::D_SEP_B }>().unwrap_unchecked();
+                    hasher.squeeze(&mut cv).unwrap_unchecked();
+                }
 
-                sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &cv);
+                sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &cv);
             }
 
             let (enc, elen) = length_encode(n - 1);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &enc[..elen]);
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_B);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &enc[..elen]);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_B);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_C }>(&mut state, &mut offset);
 
             KT256XOF {
                 state,
@@ -110,28 +112,28 @@ impl KT256 {
         let n = (tlen + (Self::B - 1)) / Self::B;
 
         if n == 1 {
-            let mut state = [0u64; 25];
+            let mut state = [0u64; turboshake::keccak::LANE_CNT];
             let mut offset = 0;
 
             let (chunk, clen) = get_ith_chunk::<{ Self::B }>(0, msg, cstr, &enc[..elen]);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk[..clen]);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_A }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk[..clen]);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_A }>(&mut state, &mut offset);
 
             KT256XOF {
                 state,
                 squeezable: Self::RATE_BYTES,
             }
         } else {
-            let mut state = [0u64; 25];
+            let mut state = [0u64; turboshake::keccak::LANE_CNT];
             let mut offset = 0;
 
             let (chunk, _) = get_ith_chunk::<{ Self::B }>(0, msg, cstr, &enc[..elen]);
             const PAD_A: [u8; 8] = [3, 0, 0, 0, 0, 0, 0, 0];
             const PAD_B: [u8; 2] = [0xff, 0xff];
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &chunk);
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_A);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &chunk);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_A);
 
             let cpus = cmp::min(num_cpus::get(), n - 1);
             let pool = ThreadPoolBuilder::new().num_threads(cpus).build().unwrap();
@@ -141,22 +143,24 @@ impl KT256 {
                 cvs.par_chunks_mut(64).enumerate().for_each(|(i, cv)| {
                     let (chunk, clen) = get_ith_chunk::<{ Self::B }>(i + 1, msg, cstr, &enc[..elen]);
 
-                    let mut hasher = TurboShake256::new();
-                    hasher.absorb(&chunk[..clen]);
-                    hasher.finalize::<{ Self::D_SEP_B }>();
-                    hasher.squeeze(cv);
+                    unsafe {
+                        let mut hasher = TurboShake256::default();
+                        hasher.absorb(&chunk[..clen]).unwrap_unchecked();
+                        hasher.finalize::<{ Self::D_SEP_B }>().unwrap_unchecked();
+                        hasher.squeeze(cv).unwrap_unchecked();
+                    }
                 });
 
                 cvs
             });
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &cvs);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &cvs);
 
             let (enc, elen) = length_encode(n - 1);
 
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &enc[..elen]);
-            sponge::absorb::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }>(&mut state, &mut offset, &PAD_B);
-            sponge::finalize::<{ Self::RATE_BYTES }, { Self::RATE_WORDS }, { Self::D_SEP_C }>(&mut state, &mut offset);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &enc[..elen]);
+            sponge::absorb::<{ Self::RATE_BYTES }>(&mut state, &mut offset, &PAD_B);
+            sponge::finalize::<{ Self::RATE_BYTES }, { Self::D_SEP_C }>(&mut state, &mut offset);
 
             KT256XOF {
                 state,
@@ -185,6 +189,6 @@ impl KT256XOF {
     /// number of bytes from sponge Keccak\[512\].
     #[inline(always)]
     pub fn squeeze(&mut self, out: &mut [u8]) {
-        sponge::squeeze::<{ KT256::RATE_BYTES }, { KT256::RATE_WORDS }>(&mut self.state, &mut self.squeezable, out);
+        sponge::squeeze::<{ KT256::RATE_BYTES }>(&mut self.state, &mut self.squeezable, out);
     }
 }
