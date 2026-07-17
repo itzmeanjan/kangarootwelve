@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use kangarootwelve::{KT128, KT256};
 use rand::Rng;
-use std::hint::black_box;
+use std::{hint::black_box, time::Duration};
 
 fn bytes_to_human_readable(bytes: usize) -> String {
     let units = ["B", "KB", "MB", "GB", "TB"];
@@ -54,6 +54,9 @@ fn kt128(c: &mut Criterion) {
     let mut rng = rand::rng();
     let mut group = c.benchmark_group("kt128");
 
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(15));
+
     for cfg in ARGS {
         let msg = (0..cfg.msg_byte_len).map(|_| rng.random()).collect::<Vec<u8>>();
 
@@ -76,6 +79,9 @@ fn kt128(c: &mut Criterion) {
 fn kt256(c: &mut Criterion) {
     let mut rng = rand::rng();
     let mut group = c.benchmark_group("kt256");
+
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(15));
 
     for cfg in ARGS {
         let msg = (0..cfg.msg_byte_len).map(|_| rng.random()).collect::<Vec<u8>>();
