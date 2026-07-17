@@ -10,7 +10,8 @@ BACKTRACE=RUST_BACKTRACE=1
 
 .PHONY: clippy
 clippy: ## Runs clippy showing warnings
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --all --all-targets -- -D warnings
+	cargo clippy --all --all-targets --features multi_threaded -- -D warnings
 
 .PHONY: format
 format: ## Formats source tree

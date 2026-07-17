@@ -109,7 +109,7 @@ impl KT256 {
     pub fn hash(msg: &[u8], cstr: &[u8]) -> KT256XOF {
         let (enc, elen) = length_encode(cstr.len());
         let tlen = msg.len() + cstr.len() + elen;
-        let n = (tlen + (Self::B - 1)) / Self::B;
+        let n = tlen.div_ceil(Self::B);
 
         if n == 1 {
             let mut state = [0u64; turboshake::keccak::LANE_CNT];
