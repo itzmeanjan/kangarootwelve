@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -38,6 +39,20 @@ constexpr size_t KT256_CAPACITY_BITS = 2 * KT256_TARGET_BIT_SECURITY;
 constexpr size_t KT256_RATE_BITS = 1600 - KT256_CAPACITY_BITS;
 constexpr size_t KT256_RATE_BYTES = KT256_RATE_BITS / 8;
 constexpr size_t KT256_CV_BYTES = KT256_CAPACITY_BITS / 8;
+
+struct compute_timer
+{
+  using clock = std::chrono::steady_clock;
+
+  clock::time_point begin;
+
+  compute_timer()
+    : begin(clock::now())
+  {
+  }
+
+  uint64_t stop() const { return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - begin).count(); }
+};
 
 inline size_t
 length_encode_host(uint64_t x, uint8_t res[9])
@@ -141,7 +156,7 @@ leaf_kernel(const uint8_t* S, size_t tlen, size_t leaf_begin, size_t count, uint
 
 template<size_t RATE, size_t CVLEN>
 int
-hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t out_state[keccak::LANE_COUNT * 8])
+hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t out_state[keccak::LANE_COUNT * 8], uint64_t* out_elapsed_ns = nullptr)
 {
   uint8_t enc[9];
   const size_t elen = length_encode_host(clen, enc);
@@ -161,6 +176,8 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
 
   const size_t n = (tlen + CHUNK_BYTE_LEN - 1) / CHUNK_BYTE_LEN;
 
+  uint64_t elapsed_ns = 0;
+
   if (n == 1) {
     uint8_t* dS = nullptr;
     uint8_t* dState = nullptr;
@@ -175,12 +192,19 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
         }
       }
 
+      const compute_timer timer;
+
       single_node_kernel<RATE><<<1, 1>>>(dS, tlen, dState);
       KT_TRY(cudaGetLastError(), KT_ERR_KERNEL);
       KT_TRY(cudaMemcpy(out_state, dState, keccak::LANE_COUNT * 8, cudaMemcpyDeviceToHost), KT_ERR_MEMCPY);
 
+      elapsed_ns = timer.stop();
       return KT_OK;
     }();
+
+    if (out_elapsed_ns) {
+      *out_elapsed_ns = elapsed_ns;
+    }
 
     if (dState) {
       cudaFree(dState);
@@ -265,6 +289,8 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
     constexpr uint8_t padA[8] = { 3, 0, 0, 0, 0, 0, 0, 0 };
     constexpr uint8_t padB[2] = { 0xff, 0xff };
 
+    const compute_timer timer;
+
     uint64_t state[keccak::LANE_COUNT] = {};
     size_t offset = 0;
 
@@ -304,8 +330,13 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
       utils::u64_le_store(out_state + k * 8, state[k]);
     }
 
+    elapsed_ns = timer.stop();
     return KT_OK;
   }();
+
+  if (out_elapsed_ns) {
+    *out_elapsed_ns = elapsed_ns;
+  }
 
   for (uint8_t* h : hbuf) {
     cudaFreeHost(h);

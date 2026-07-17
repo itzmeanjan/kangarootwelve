@@ -1,4 +1,4 @@
-use core::fmt;
+use core::{fmt, time::Duration};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -45,18 +45,20 @@ impl fmt::Display for CudaError {
 impl std::error::Error for CudaError {}
 
 unsafe extern "C" {
-    fn kt128_cuda_absorb(msg: *const u8, mlen: usize, cstr: *const u8, clen: usize, out_state: *mut u8) -> i32;
-    fn kt256_cuda_absorb(msg: *const u8, mlen: usize, cstr: *const u8, clen: usize, out_state: *mut u8) -> i32;
+    fn kt128_cuda_absorb(msg: *const u8, mlen: usize, cstr: *const u8, clen: usize, out_state: *mut u8, out_elapsed_ns: *mut u64) -> i32;
+    fn kt256_cuda_absorb(msg: *const u8, mlen: usize, cstr: *const u8, clen: usize, out_state: *mut u8, out_elapsed_ns: *mut u64) -> i32;
 }
 
-type AbsorbFn = unsafe extern "C" fn(*const u8, usize, *const u8, usize, *mut u8) -> i32;
+type AbsorbFn = unsafe extern "C" fn(*const u8, usize, *const u8, usize, *mut u8, *mut u64) -> i32;
 
-fn absorb_state(ffi: AbsorbFn, msg: &[u8], cstr: &[u8]) -> Result<[u64; 25], CudaError> {
+fn absorb_state(ffi: AbsorbFn, msg: &[u8], cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
     const KECCAK_WORD_BYTE_LENGTH: usize = turboshake::keccak::W / u8::BITS as usize;
     const KECCAK_STATE_BYTE_WIDTH: usize = turboshake::keccak::LANE_CNT * KECCAK_WORD_BYTE_LENGTH;
 
     let mut bytes = [0u8; KECCAK_STATE_BYTE_WIDTH];
-    let rc = unsafe { ffi(msg.as_ptr(), msg.len(), cstr.as_ptr(), cstr.len(), bytes.as_mut_ptr()) };
+    let mut elapsed_ns = 0u64;
+
+    let rc = unsafe { ffi(msg.as_ptr(), msg.len(), cstr.as_ptr(), cstr.len(), bytes.as_mut_ptr(), &mut elapsed_ns) };
     if rc != 0 {
         return Err(CudaError::from_code(rc));
     }
@@ -66,13 +68,21 @@ fn absorb_state(ffi: AbsorbFn, msg: &[u8], cstr: &[u8]) -> Result<[u64; 25], Cud
         *lane = u64::from_le_bytes(chunk.try_into().unwrap());
     }
 
-    Ok(state)
+    Ok((state, Duration::from_nanos(elapsed_ns)))
 }
 
 pub(crate) fn kt128_absorb_state(msg: &[u8], cstr: &[u8]) -> Result<[u64; 25], CudaError> {
-    absorb_state(kt128_cuda_absorb, msg, cstr)
+    absorb_state(kt128_cuda_absorb, msg, cstr).map(|(state, _)| state)
 }
 
 pub(crate) fn kt256_absorb_state(msg: &[u8], cstr: &[u8]) -> Result<[u64; 25], CudaError> {
+    absorb_state(kt256_cuda_absorb, msg, cstr).map(|(state, _)| state)
+}
+
+pub(crate) fn kt128_absorb_state_timed(msg: &[u8], cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
+    absorb_state(kt128_cuda_absorb, msg, cstr)
+}
+
+pub(crate) fn kt256_absorb_state_timed(msg: &[u8], cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
     absorb_state(kt256_cuda_absorb, msg, cstr)
 }

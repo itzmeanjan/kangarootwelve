@@ -186,6 +186,19 @@ impl KT128 {
             squeezable: Self::RATE_BYTES,
         }
     }
+
+    #[cfg(feature = "cuda")]
+    pub fn hash_timed(msg: &[u8], cstr: &[u8]) -> (KT128XOF, core::time::Duration) {
+        let (state, elapsed) = crate::cuda::kt128_absorb_state_timed(msg, cstr).unwrap_or_else(|e| panic!("KT128 GPU hashing failed: {e}"));
+
+        (
+            KT128XOF {
+                state,
+                squeezable: Self::RATE_BYTES,
+            },
+            elapsed,
+        )
+    }
 }
 
 impl KT128XOF {

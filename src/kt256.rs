@@ -186,6 +186,19 @@ impl KT256 {
             squeezable: Self::RATE_BYTES,
         }
     }
+
+    #[cfg(feature = "cuda")]
+    pub fn hash_timed(msg: &[u8], cstr: &[u8]) -> (KT256XOF, core::time::Duration) {
+        let (state, elapsed) = crate::cuda::kt256_absorb_state_timed(msg, cstr).unwrap_or_else(|e| panic!("KT256 GPU hashing failed: {e}"));
+
+        (
+            KT256XOF {
+                state,
+                squeezable: Self::RATE_BYTES,
+            },
+            elapsed,
+        )
+    }
 }
 
 impl KT256XOF {
