@@ -12,6 +12,7 @@ BACKTRACE=RUST_BACKTRACE=1
 clippy: ## Runs clippy showing warnings
 	cargo clippy --all --all-targets -- -D warnings
 	cargo clippy --all --all-targets --features multi_threaded -- -D warnings
+	cargo clippy --all --all-targets --features cuda -- -D warnings
 
 .PHONY: format
 format: ## Formats source tree

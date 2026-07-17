@@ -1,5 +1,9 @@
+#[cfg(not(feature = "cuda"))]
 use crate::utils::{get_ith_chunk, length_encode};
-use turboshake::{TurboShake256, sponge};
+use turboshake::sponge;
+
+#[cfg(not(feature = "cuda"))]
+use turboshake::TurboShake256;
 
 #[cfg(feature = "multi_threaded")]
 use std::cmp;
@@ -23,9 +27,13 @@ impl KT256 {
     const KECCAK_STATE_BIT_WIDTH: usize = turboshake::keccak::LANE_CNT * turboshake::keccak::W;
     const RATE_BITS: usize = Self::KECCAK_STATE_BIT_WIDTH - Self::CAPACITY_BITS;
     const RATE_BYTES: usize = Self::RATE_BITS / u8::BITS as usize;
+    #[cfg(not(feature = "cuda"))]
     const B: usize = 8192;
+    #[cfg(not(feature = "cuda"))]
     const D_SEP_A: u8 = 0x07;
+    #[cfg(not(feature = "cuda"))]
     const D_SEP_B: u8 = 0x0b;
+    #[cfg(not(feature = "cuda"))]
     const D_SEP_C: u8 = 0x06;
 
     /// Given message (M) and customization string (C, which can be used for domain seperation)

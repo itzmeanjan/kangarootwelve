@@ -7,6 +7,8 @@ mod cuda;
 mod kt128;
 mod kt256;
 mod tests;
+
+#[cfg(not(feature = "cuda"))]
 mod utils;
 
 pub use kt128::{KT128, KT128XOF};
