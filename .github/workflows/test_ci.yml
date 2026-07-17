@@ -21,8 +21,8 @@ jobs:
             ubuntu-latest, # x86-64
             ubuntu-24.04-arm, # arm64
 
-            macos-13, # x86_64
-            macos-latest, # arm64
+            macos-26, # arm64
+            macos-26-intel, # x86_64
 
             windows-latest, # x86_64
             windows-11-arm, # arm64
