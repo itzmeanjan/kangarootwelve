@@ -5,11 +5,14 @@
 
 #pragma once
 
-#include <chrono>
+#include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <cuda_runtime.h>
+#include <limits>
+#include <span>
+#include <utility>
 #include <vector>
 
 #include "keccak.cuh"
@@ -18,11 +21,19 @@
 
 namespace kangarootwelve {
 
+constexpr size_t KECCAK_PERMUTATION_BIT_WIDTH = 1600;
+constexpr size_t KECCAK_PERMUTATION_BYTE_WIDTH = KECCAK_PERMUTATION_BIT_WIDTH / std::numeric_limits<uint8_t>::digits;
 constexpr size_t CHUNK_BYTE_LEN = 8192;
-constexpr unsigned THREADS_PER_BLOCK = 64;
+constexpr size_t LENGTH_ENCODE_MAX_BYTE_LEN = sizeof(uint64_t) + 1;
 
-constexpr size_t LEAVES_PER_BATCH = 8192;
-constexpr int PIPELINE_DEPTH = 3;
+constexpr unsigned THREADS_PER_BLOCK = 128;
+constexpr size_t LEAVES_PER_BATCH = 32768;
+constexpr size_t PIPELINE_DEPTH = 3;
+
+static_assert(THREADS_PER_BLOCK > 0, "Must be non-zero");
+static_assert(THREADS_PER_BLOCK <= 1024, "Must not exceed the CUDA hardware limit of 1024 threads per block");
+static_assert(LEAVES_PER_BATCH > 0, "Must be non-zero");
+static_assert(PIPELINE_DEPTH > 0, "Must be non-zero");
 
 constexpr uint8_t D_SEP_SINGLE = 0x07;
 constexpr uint8_t D_SEP_LEAF = 0x0b;
@@ -30,82 +41,28 @@ constexpr uint8_t D_SEP_FINAL = 0x06;
 
 constexpr size_t KT128_TARGET_BIT_SECURITY = 128;
 constexpr size_t KT128_CAPACITY_BITS = 2 * KT128_TARGET_BIT_SECURITY;
-constexpr size_t KT128_RATE_BITS = 1600 - KT128_CAPACITY_BITS;
-constexpr size_t KT128_RATE_BYTES = KT128_RATE_BITS / 8;
-constexpr size_t KT128_CV_BYTES = KT128_CAPACITY_BITS / 8;
+constexpr size_t KT128_RATE_BITS = KECCAK_PERMUTATION_BIT_WIDTH - KT128_CAPACITY_BITS;
+constexpr size_t KT128_RATE_BYTES = KT128_RATE_BITS / std::numeric_limits<uint8_t>::digits;
+constexpr size_t KT128_CV_BYTES = KT128_CAPACITY_BITS / std::numeric_limits<uint8_t>::digits;
 
 constexpr size_t KT256_TARGET_BIT_SECURITY = 256;
 constexpr size_t KT256_CAPACITY_BITS = 2 * KT256_TARGET_BIT_SECURITY;
-constexpr size_t KT256_RATE_BITS = 1600 - KT256_CAPACITY_BITS;
-constexpr size_t KT256_RATE_BYTES = KT256_RATE_BITS / 8;
-constexpr size_t KT256_CV_BYTES = KT256_CAPACITY_BITS / 8;
+constexpr size_t KT256_RATE_BITS = KECCAK_PERMUTATION_BIT_WIDTH - KT256_CAPACITY_BITS;
+constexpr size_t KT256_RATE_BYTES = KT256_RATE_BITS / std::numeric_limits<uint8_t>::digits;
+constexpr size_t KT256_CV_BYTES = KT256_CAPACITY_BITS / std::numeric_limits<uint8_t>::digits;
 
-struct compute_timer
+inline std::pair<std::array<uint8_t, LENGTH_ENCODE_MAX_BYTE_LEN>, size_t>
+length_encode(uint64_t x)
 {
-  using clock = std::chrono::steady_clock;
+  std::array<uint8_t, LENGTH_ENCODE_MAX_BYTE_LEN> res = {};
+  const unsigned l = utils::ceil_div<unsigned>(std::bit_width(x), std::numeric_limits<uint8_t>::digits);
 
-  clock::time_point begin;
-
-  compute_timer()
-    : begin(clock::now())
-  {
-  }
-
-  uint64_t stop() const { return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - begin).count(); }
-};
-
-inline size_t
-length_encode_host(uint64_t x, uint8_t res[9])
-{
-  int bw = 0;
-  uint64_t t = x;
-
-  while (t) {
-    bw++;
-    t >>= 1;
-  }
-
-  int l = (bw + 7) / 8;
-  for (int i = 0; i < l; i++) {
-    res[l - 1 - i] = (uint8_t)(x >> (8 * i));
+  for (unsigned i = 0; i < l; i++) {
+    res[l - 1 - i] = (uint8_t)(x >> (std::numeric_limits<uint8_t>::digits * i));
   }
 
   res[l] = (uint8_t)l;
-  return (size_t)l + 1;
-}
-
-template<size_t B>
-inline size_t
-get_ith_chunk(size_t i, const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, const uint8_t* enc, size_t elen, uint8_t out[B])
-{
-  const size_t l0 = mlen;
-  const size_t l1 = l0 + clen;
-  const size_t l2 = l1 + elen;
-
-  const size_t start_at = i * B;
-  size_t off = 0;
-
-  if (start_at < l0) {
-    const size_t readable = ((l0 - start_at) < B) ? (l0 - start_at) : B;
-    memcpy(out, msg + start_at, readable);
-    off += readable;
-  }
-
-  if ((off < B) && ((start_at + off) < l1)) {
-    const size_t readable = ((l1 - (start_at + off)) < (B - off)) ? (l1 - (start_at + off)) : (B - off);
-    const size_t tmp = (start_at + off) - l0;
-    memcpy(out + off, cstr + tmp, readable);
-    off += readable;
-  }
-
-  if ((off < B) && ((start_at + off) < l2)) {
-    const size_t readable = ((l2 - (start_at + off)) < (B - off)) ? (l2 - (start_at + off)) : (B - off);
-    const size_t tmp = (start_at + off) - l1;
-    memcpy(out + off, enc + tmp, readable);
-    off += readable;
-  }
-
-  return off;
+  return { res, (size_t)l + 1 };
 }
 
 template<size_t RATE>
@@ -155,24 +112,24 @@ leaf_kernel(const uint8_t* S, size_t tlen, size_t leaf_begin, size_t count, uint
 }
 
 inline int
-assemble_S_from_device(uint8_t* dS, const uint8_t* dmsg, size_t mlen, const uint8_t* cstr, size_t clen, const uint8_t* enc, size_t elen)
+assemble_S_from_device(uint8_t* dS, const uint8_t* dmsg, size_t mlen, std::span<const uint8_t> cstr, std::span<const uint8_t> enc)
 {
   if (mlen) {
     KT_TRY(cudaMemcpy(dS, dmsg, mlen, cudaMemcpyDeviceToDevice), KT_ERR_MEMCPY);
   }
-  if (clen) {
-    KT_TRY(cudaMemcpy(dS + mlen, cstr, clen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+  if (!cstr.empty()) {
+    KT_TRY(cudaMemcpy(dS + mlen, cstr.data(), cstr.size(), cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
   }
-  KT_TRY(cudaMemcpy(dS + mlen + clen, enc, elen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+  KT_TRY(cudaMemcpy(dS + mlen + cstr.size(), enc.data(), enc.size(), cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
 
   return KT_OK;
 }
 
 template<size_t RATE, size_t CVLEN>
 int
-hash_device_S(const uint8_t* dS, size_t tlen, uint8_t out_state[keccak::LANE_COUNT * 8], uint64_t* out_elapsed_ns)
+hash_device_S(const uint8_t* dS, size_t tlen, std::span<uint8_t, KECCAK_PERMUTATION_BYTE_WIDTH> out_state, uint64_t* out_elapsed_ns)
 {
-  const size_t n = (tlen + CHUNK_BYTE_LEN - 1) / CHUNK_BYTE_LEN;
+  const size_t n = utils::ceil_div(tlen, CHUNK_BYTE_LEN);
 
   uint64_t elapsed_ns = 0;
 
@@ -180,13 +137,13 @@ hash_device_S(const uint8_t* dS, size_t tlen, uint8_t out_state[keccak::LANE_COU
     uint8_t* dState = nullptr;
 
     const int status = [&]() -> int {
-      KT_TRY(cudaMalloc(&dState, keccak::LANE_COUNT * 8), KT_ERR_ALLOC);
+      KT_TRY(cudaMalloc(&dState, KECCAK_PERMUTATION_BYTE_WIDTH), KT_ERR_ALLOC);
 
-      const compute_timer timer;
+      const utils::compute_timer timer;
 
       single_node_kernel<RATE><<<1, 1>>>(dS, tlen, dState);
       KT_TRY(cudaGetLastError(), KT_ERR_KERNEL);
-      KT_TRY(cudaMemcpy(out_state, dState, keccak::LANE_COUNT * 8, cudaMemcpyDeviceToHost), KT_ERR_MEMCPY);
+      KT_TRY(cudaMemcpy(out_state.data(), dState, KECCAK_PERMUTATION_BYTE_WIDTH, cudaMemcpyDeviceToHost), KT_ERR_MEMCPY);
 
       elapsed_ns = timer.stop();
       return KT_OK;
@@ -204,8 +161,8 @@ hash_device_S(const uint8_t* dS, size_t tlen, uint8_t out_state[keccak::LANE_COU
   }
 
   const size_t leaves = n - 1;
-  const size_t nb = (leaves + LEAVES_PER_BATCH - 1) / LEAVES_PER_BATCH;
-  const int depth = (nb < (size_t)PIPELINE_DEPTH) ? (int)nb : PIPELINE_DEPTH;
+  const size_t nb = utils::ceil_div(leaves, LEAVES_PER_BATCH);
+  const size_t depth = (nb < PIPELINE_DEPTH) ? nb : PIPELINE_DEPTH;
 
   uint8_t head_buf[CHUNK_BYTE_LEN] = { 0 };
 
@@ -245,7 +202,7 @@ hash_device_S(const uint8_t* dS, size_t tlen, uint8_t out_state[keccak::LANE_COU
       const size_t begin = b * LEAVES_PER_BATCH;
       const size_t count = batch_count(b);
 
-      const size_t num_blocks = (count + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+      const size_t num_blocks = utils::ceil_div(count, (size_t)THREADS_PER_BLOCK);
       dim3 grid;
       const int rc = utils::make_grid(num_blocks, &grid);
       if (rc != KT_OK) {
@@ -263,7 +220,7 @@ hash_device_S(const uint8_t* dS, size_t tlen, uint8_t out_state[keccak::LANE_COU
     constexpr uint8_t padA[8] = { 3, 0, 0, 0, 0, 0, 0, 0 };
     constexpr uint8_t padB[2] = { 0xff, 0xff };
 
-    const compute_timer timer;
+    const utils::compute_timer timer;
 
     uint64_t state[keccak::LANE_COUNT] = {};
     size_t offset = 0;
@@ -293,15 +250,14 @@ hash_device_S(const uint8_t* dS, size_t tlen, uint8_t out_state[keccak::LANE_COU
       }
     }
 
-    uint8_t enc_n[9];
-    const size_t elen_n = length_encode_host(leaves, enc_n);
+    const auto [enc_n, elen_n] = length_encode(leaves);
 
-    sponge::absorb(state, &offset, enc_n, elen_n, RATE);
+    sponge::absorb(state, &offset, enc_n.data(), elen_n, RATE);
     sponge::absorb(state, &offset, padB, 2, RATE);
     sponge::finalize(state, &offset, RATE, D_SEP_FINAL);
 
     for (size_t k = 0; k < keccak::LANE_COUNT; k++) {
-      utils::u64_le_store(out_state + k * 8, state[k]);
+      utils::u64_le_store(out_state.data() + k * 8, state[k]);
     }
 
     elapsed_ns = timer.stop();
@@ -330,18 +286,21 @@ hash_device_S(const uint8_t* dS, size_t tlen, uint8_t out_state[keccak::LANE_COU
 
 template<size_t RATE, size_t CVLEN>
 int
-hash_device(const uint8_t* dmsg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t out_state[keccak::LANE_COUNT * 8], uint64_t* out_elapsed_ns = nullptr)
+hash_device(const uint8_t* dmsg,
+            size_t mlen,
+            std::span<const uint8_t> cstr,
+            std::span<uint8_t, KECCAK_PERMUTATION_BYTE_WIDTH> out_state,
+            uint64_t* out_elapsed_ns = nullptr)
 {
-  uint8_t enc[9];
-  const size_t elen = length_encode_host(clen, enc);
-  const size_t tlen = mlen + clen + elen;
+  const auto [enc, elen] = length_encode(cstr.size());
+  const size_t tlen = mlen + cstr.size() + elen;
 
   uint8_t* dS = nullptr;
 
   const int status = [&]() -> int {
     KT_TRY(cudaMalloc(&dS, tlen), KT_ERR_ALLOC);
     {
-      const int rc = assemble_S_from_device(dS, dmsg, mlen, cstr, clen, enc, elen);
+      const int rc = assemble_S_from_device(dS, dmsg, mlen, cstr, std::span<const uint8_t>(enc.data(), elen));
       if (rc != KT_OK) {
         return rc;
       }

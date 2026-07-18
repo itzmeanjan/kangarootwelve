@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cuda_runtime.h>
@@ -23,11 +25,18 @@ enum kt_status
   do {                                                                                                                                                         \
     cudaError_t _err = (expr);                                                                                                                                 \
     if (_err != cudaSuccess) {                                                                                                                                 \
-      return (code);                                                                                                                                          \
+      return (code);                                                                                                                                           \
     }                                                                                                                                                          \
   } while (0)
 
 namespace kangarootwelve::utils {
+
+template<std::unsigned_integral T>
+__host__ __device__ constexpr T
+ceil_div(T a, T b)
+{
+  return a / b + (a % b != 0);
+}
 
 // Rotate `x` left by `n` bits (0 <= n < 64).
 __host__ __device__ __forceinline__ uint64_t
@@ -90,14 +99,14 @@ make_grid(size_t num_blocks, dim3* out)
     return KT_OK;
   }
 
-  const size_t gy = (num_blocks + mx - 1) / mx;
+  const size_t gy = ceil_div(num_blocks, mx);
   if (gy <= my) {
     *out = dim3((unsigned)mx, (unsigned)gy, 1);
     return KT_OK;
   }
 
   const size_t plane = mx * my;
-  const size_t gz = (num_blocks + plane - 1) / plane;
+  const size_t gz = ceil_div(num_blocks, plane);
   if (gz > mz) {
     return KT_ERR_GRID;
   }
@@ -105,5 +114,20 @@ make_grid(size_t num_blocks, dim3* out)
   *out = dim3((unsigned)mx, (unsigned)my, (unsigned)gz);
   return KT_OK;
 }
+
+// Host-side wall-clock timer, reporting elapsed nanoseconds since construction.
+struct compute_timer
+{
+  using clock = std::chrono::steady_clock;
+
+  clock::time_point begin;
+
+  compute_timer()
+    : begin(clock::now())
+  {
+  }
+
+  uint64_t stop() const { return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - begin).count(); }
+};
 
 } // namespace kangarootwelve::utils

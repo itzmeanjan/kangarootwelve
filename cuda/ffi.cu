@@ -1,26 +1,45 @@
 #include <cstddef>
 #include <cstdint>
 #include <new>
+#include <span>
 
 #include "kangarootwelve.cuh"
 
 using namespace kangarootwelve;
 
 extern "C" int
-kt128_cuda_absorb_device(const uint8_t* dmsg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t out_state[keccak::LANE_COUNT * 8], uint64_t* out_elapsed_ns)
+kt128_cuda_absorb_device(const uint8_t* dmsg,
+                         size_t mlen,
+                         const uint8_t* cstr,
+                         size_t clen,
+                         uint8_t out_state[KECCAK_PERMUTATION_BYTE_WIDTH],
+                         uint64_t* out_elapsed_ns)
 {
   try {
-    return hash_device<KT128_RATE_BYTES, KT128_CV_BYTES>(dmsg, mlen, cstr, clen, out_state, out_elapsed_ns);
+    return hash_device<KT128_RATE_BYTES, KT128_CV_BYTES>(dmsg,
+                                                         mlen,
+                                                         std::span<const uint8_t>(cstr, clen),
+                                                         std::span<uint8_t, KECCAK_PERMUTATION_BYTE_WIDTH>(out_state, KECCAK_PERMUTATION_BYTE_WIDTH),
+                                                         out_elapsed_ns);
   } catch (const std::bad_alloc&) {
     return KT_ERR_ALLOC;
   }
 }
 
 extern "C" int
-kt256_cuda_absorb_device(const uint8_t* dmsg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t out_state[keccak::LANE_COUNT * 8], uint64_t* out_elapsed_ns)
+kt256_cuda_absorb_device(const uint8_t* dmsg,
+                         size_t mlen,
+                         const uint8_t* cstr,
+                         size_t clen,
+                         uint8_t out_state[KECCAK_PERMUTATION_BYTE_WIDTH],
+                         uint64_t* out_elapsed_ns)
 {
   try {
-    return hash_device<KT256_RATE_BYTES, KT256_CV_BYTES>(dmsg, mlen, cstr, clen, out_state, out_elapsed_ns);
+    return hash_device<KT256_RATE_BYTES, KT256_CV_BYTES>(dmsg,
+                                                         mlen,
+                                                         std::span<const uint8_t>(cstr, clen),
+                                                         std::span<uint8_t, KECCAK_PERMUTATION_BYTE_WIDTH>(out_state, KECCAK_PERMUTATION_BYTE_WIDTH),
+                                                         out_elapsed_ns);
   } catch (const std::bad_alloc&) {
     return KT_ERR_ALLOC;
   }
