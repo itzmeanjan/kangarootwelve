@@ -8,16 +8,6 @@ help:
 
 BACKTRACE=RUST_BACKTRACE=1
 
-.PHONY: clippy
-clippy: ## Runs clippy showing warnings
-	cargo clippy --all --all-targets -- -D warnings
-	cargo clippy --all --all-targets --features multi_threaded -- -D warnings
-	cargo clippy --all --all-targets --features cuda -- -D warnings
-
-.PHONY: format
-format: ## Formats source tree
-	cargo fmt --all
-
 .PHONY: test
 test: ## Run all tests
 	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --profile test-release
@@ -45,10 +35,6 @@ bench: ## Run all benchmarks
 bench-cuda: ## Run all benchmarks against the CUDA backend
 	RUSTFLAGS="-C target-cpu=native" cargo criterion --features cuda
 
-.PHONY: clean
-clean: ## Removes cargo target directory
-	cargo clean
-
 .PHONY: example
 example: ## Runs the KT128 and KT256 example program
 	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128
@@ -56,9 +42,29 @@ example: ## Runs the KT128 and KT256 example program
 	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128 --features multi_threaded
 	RUSTFLAGS="-C target-cpu=native" cargo run --example kt256 --features multi_threaded
 
+.PHONY: example-cuda
+example-cuda: ## Runs the example programs against the CUDA backend
+	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128 --features cuda
+	RUSTFLAGS="-C target-cpu=native" cargo run --example kt256 --features cuda
+	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128_cuda --features cuda
+
 .PHONY: example-wasm
 example-wasm: ## Runs the KT128 and KT256 example program in WASM environment
 	cargo run --example kt128 --target wasm32-wasip1 --no-default-features
 	cargo run --example kt256 --target wasm32-wasip1 --no-default-features
 	cargo run --example kt128 --target wasm32-wasip2 --no-default-features
 	cargo run --example kt256 --target wasm32-wasip2 --no-default-features
+
+.PHONY: clippy
+clippy: ## Runs clippy showing warnings
+	cargo clippy --all --all-targets -- -D warnings
+	cargo clippy --all --all-targets --features multi_threaded -- -D warnings
+	cargo clippy --all --all-targets --features cuda -- -D warnings
+
+.PHONY: format
+format: ## Formats source tree
+	cargo fmt --all
+
+.PHONY: clean
+clean: ## Removes cargo target directory
+	cargo clean

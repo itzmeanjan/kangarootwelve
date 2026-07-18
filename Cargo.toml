@@ -32,6 +32,10 @@ cuda = []
 name = "kangarootwelve"
 harness = false
 
+[[example]]
+name = "kt128_cuda"
+required-features = ["cuda"]
+
 [profile.optimized]
 inherits = "release"
 codegen-units = 1
