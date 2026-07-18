@@ -154,43 +154,33 @@ leaf_kernel(const uint8_t* S, size_t tlen, size_t leaf_begin, size_t count, uint
   }
 }
 
+inline int
+assemble_S_from_device(uint8_t* dS, const uint8_t* dmsg, size_t mlen, const uint8_t* cstr, size_t clen, const uint8_t* enc, size_t elen)
+{
+  if (mlen) {
+    KT_TRY(cudaMemcpy(dS, dmsg, mlen, cudaMemcpyDeviceToDevice), KT_ERR_MEMCPY);
+  }
+  if (clen) {
+    KT_TRY(cudaMemcpy(dS + mlen, cstr, clen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+  }
+  KT_TRY(cudaMemcpy(dS + mlen + clen, enc, elen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
+
+  return KT_OK;
+}
+
 template<size_t RATE, size_t CVLEN>
 int
-hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t out_state[keccak::LANE_COUNT * 8], uint64_t* out_elapsed_ns = nullptr)
+hash_device_S(const uint8_t* dS, size_t tlen, uint8_t out_state[keccak::LANE_COUNT * 8], uint64_t* out_elapsed_ns)
 {
-  uint8_t enc[9];
-  const size_t elen = length_encode_host(clen, enc);
-  const size_t tlen = mlen + clen + elen;
-
-  const auto copy_S_to_device = [&](uint8_t* dS) -> int {
-    if (mlen) {
-      KT_TRY(cudaMemcpy(dS, msg, mlen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
-    }
-    if (clen) {
-      KT_TRY(cudaMemcpy(dS + mlen, cstr, clen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
-    }
-    KT_TRY(cudaMemcpy(dS + mlen + clen, enc, elen, cudaMemcpyHostToDevice), KT_ERR_MEMCPY);
-
-    return KT_OK;
-  };
-
   const size_t n = (tlen + CHUNK_BYTE_LEN - 1) / CHUNK_BYTE_LEN;
 
   uint64_t elapsed_ns = 0;
 
   if (n == 1) {
-    uint8_t* dS = nullptr;
     uint8_t* dState = nullptr;
 
     const int status = [&]() -> int {
-      KT_TRY(cudaMalloc(&dS, tlen), KT_ERR_ALLOC);
       KT_TRY(cudaMalloc(&dState, keccak::LANE_COUNT * 8), KT_ERR_ALLOC);
-      {
-        const int rc = copy_S_to_device(dS);
-        if (rc != KT_OK) {
-          return rc;
-        }
-      }
 
       const compute_timer timer;
 
@@ -209,9 +199,6 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
     if (dState) {
       cudaFree(dState);
     }
-    if (dS) {
-      cudaFree(dS);
-    }
 
     return status;
   }
@@ -220,15 +207,8 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
   const size_t nb = (leaves + LEAVES_PER_BATCH - 1) / LEAVES_PER_BATCH;
   const int depth = (nb < (size_t)PIPELINE_DEPTH) ? (int)nb : PIPELINE_DEPTH;
 
-  const uint8_t* head = msg;
   uint8_t head_buf[CHUNK_BYTE_LEN] = { 0 };
 
-  if (mlen < CHUNK_BYTE_LEN) {
-    get_ith_chunk<CHUNK_BYTE_LEN>(0, msg, mlen, cstr, clen, enc, elen, head_buf);
-    head = head_buf;
-  }
-
-  uint8_t* dS = nullptr;
   uint8_t* dCV = nullptr;
 
   std::vector<cudaStream_t> streams;
@@ -236,13 +216,7 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
   std::vector<uint8_t*> hbuf;
 
   const int status = [&]() -> int {
-    KT_TRY(cudaMalloc(&dS, tlen), KT_ERR_ALLOC);
-    {
-      const int rc = copy_S_to_device(dS);
-      if (rc != KT_OK) {
-        return rc;
-      }
-    }
+    KT_TRY(cudaMemcpy(head_buf, dS, CHUNK_BYTE_LEN, cudaMemcpyDeviceToHost), KT_ERR_MEMCPY);
     KT_TRY(cudaMalloc(&dCV, leaves * CVLEN), KT_ERR_ALLOC);
 
     for (int s = 0; s < depth; s++) {
@@ -294,7 +268,7 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
     uint64_t state[keccak::LANE_COUNT] = {};
     size_t offset = 0;
 
-    sponge::absorb(state, &offset, head, CHUNK_BYTE_LEN, RATE);
+    sponge::absorb(state, &offset, head_buf, CHUNK_BYTE_LEN, RATE);
     sponge::absorb(state, &offset, padA, 8, RATE);
 
     for (int s = 0; s < depth; s++) {
@@ -350,6 +324,32 @@ hash(const uint8_t* msg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t 
   if (dCV) {
     cudaFree(dCV);
   }
+
+  return status;
+}
+
+template<size_t RATE, size_t CVLEN>
+int
+hash_device(const uint8_t* dmsg, size_t mlen, const uint8_t* cstr, size_t clen, uint8_t out_state[keccak::LANE_COUNT * 8], uint64_t* out_elapsed_ns = nullptr)
+{
+  uint8_t enc[9];
+  const size_t elen = length_encode_host(clen, enc);
+  const size_t tlen = mlen + clen + elen;
+
+  uint8_t* dS = nullptr;
+
+  const int status = [&]() -> int {
+    KT_TRY(cudaMalloc(&dS, tlen), KT_ERR_ALLOC);
+    {
+      const int rc = assemble_S_from_device(dS, dmsg, mlen, cstr, clen, enc, elen);
+      if (rc != KT_OK) {
+        return rc;
+      }
+    }
+
+    return hash_device_S<RATE, CVLEN>(dS, tlen, out_state, out_elapsed_ns);
+  }();
+
   if (dS) {
     cudaFree(dS);
   }

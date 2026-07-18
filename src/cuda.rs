@@ -45,20 +45,67 @@ impl fmt::Display for CudaError {
 impl std::error::Error for CudaError {}
 
 unsafe extern "C" {
-    fn kt128_cuda_absorb(msg: *const u8, mlen: usize, cstr: *const u8, clen: usize, out_state: *mut u8, out_elapsed_ns: *mut u64) -> i32;
-    fn kt256_cuda_absorb(msg: *const u8, mlen: usize, cstr: *const u8, clen: usize, out_state: *mut u8, out_elapsed_ns: *mut u64) -> i32;
+    fn kt128_cuda_absorb_device(dmsg: *const u8, mlen: usize, cstr: *const u8, clen: usize, out_state: *mut u8, out_elapsed_ns: *mut u64) -> i32;
+    fn kt256_cuda_absorb_device(dmsg: *const u8, mlen: usize, cstr: *const u8, clen: usize, out_state: *mut u8, out_elapsed_ns: *mut u64) -> i32;
+    fn kt_cuda_upload(src: *const u8, len: usize) -> *mut u8;
+    fn kt_cuda_release(dptr: *mut u8);
+}
+
+/// An owned region of CUDA device memory holding a byte buffer uploaded from host memory.
+///
+/// Dropping the buffer frees the underlying device allocation. Use [`DeviceBuffer::as_ptr`] to obtain
+/// a device pointer for the GPU-resident hashing APIs.
+pub struct DeviceBuffer {
+    ptr: *mut u8,
+    len: usize,
+}
+
+impl DeviceBuffer {
+    pub fn new(data: &[u8]) -> Result<Self, CudaError> {
+        if data.is_empty() {
+            return Ok(Self {
+                ptr: core::ptr::null_mut(),
+                len: 0,
+            });
+        }
+
+        let ptr = unsafe { kt_cuda_upload(data.as_ptr(), data.len()) };
+        if ptr.is_null() {
+            return Err(CudaError::Allocation);
+        }
+
+        Ok(Self { ptr, len: data.len() })
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.ptr
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl Drop for DeviceBuffer {
+    fn drop(&mut self) {
+        unsafe { kt_cuda_release(self.ptr) };
+    }
 }
 
 type AbsorbFn = unsafe extern "C" fn(*const u8, usize, *const u8, usize, *mut u8, *mut u64) -> i32;
 
-fn absorb_state(ffi: AbsorbFn, msg: &[u8], cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
+fn absorb_device(ffi: AbsorbFn, dmsg: &DeviceBuffer, cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
     const KECCAK_WORD_BYTE_LENGTH: usize = turboshake::keccak::W / u8::BITS as usize;
     const KECCAK_STATE_BYTE_WIDTH: usize = turboshake::keccak::LANE_CNT * KECCAK_WORD_BYTE_LENGTH;
 
     let mut bytes = [0u8; KECCAK_STATE_BYTE_WIDTH];
     let mut elapsed_ns = 0u64;
 
-    let rc = unsafe { ffi(msg.as_ptr(), msg.len(), cstr.as_ptr(), cstr.len(), bytes.as_mut_ptr(), &mut elapsed_ns) };
+    let rc = unsafe { ffi(dmsg.as_ptr(), dmsg.len(), cstr.as_ptr(), cstr.len(), bytes.as_mut_ptr(), &mut elapsed_ns) };
     if rc != 0 {
         return Err(CudaError::from_code(rc));
     }
@@ -71,18 +118,10 @@ fn absorb_state(ffi: AbsorbFn, msg: &[u8], cstr: &[u8]) -> Result<([u64; 25], Du
     Ok((state, Duration::from_nanos(elapsed_ns)))
 }
 
-pub(crate) fn kt128_absorb_state(msg: &[u8], cstr: &[u8]) -> Result<[u64; 25], CudaError> {
-    absorb_state(kt128_cuda_absorb, msg, cstr).map(|(state, _)| state)
+pub(crate) fn kt128_absorb_device(dmsg: &DeviceBuffer, cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
+    absorb_device(kt128_cuda_absorb_device, dmsg, cstr)
 }
 
-pub(crate) fn kt256_absorb_state(msg: &[u8], cstr: &[u8]) -> Result<[u64; 25], CudaError> {
-    absorb_state(kt256_cuda_absorb, msg, cstr).map(|(state, _)| state)
-}
-
-pub(crate) fn kt128_absorb_state_timed(msg: &[u8], cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
-    absorb_state(kt128_cuda_absorb, msg, cstr)
-}
-
-pub(crate) fn kt256_absorb_state_timed(msg: &[u8], cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
-    absorb_state(kt256_cuda_absorb, msg, cstr)
+pub(crate) fn kt256_absorb_device(dmsg: &DeviceBuffer, cstr: &[u8]) -> Result<([u64; 25], Duration), CudaError> {
+    absorb_device(kt256_cuda_absorb_device, dmsg, cstr)
 }

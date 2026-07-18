@@ -11,5 +11,8 @@ mod tests;
 #[cfg(not(feature = "cuda"))]
 mod utils;
 
+#[cfg(feature = "cuda")]
+pub use cuda::{CudaError, DeviceBuffer};
+
 pub use kt128::{KT128, KT128XOF};
 pub use kt256::{KT256, KT256XOF};

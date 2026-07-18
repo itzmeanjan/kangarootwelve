@@ -14,9 +14,9 @@ fn main() {
     rng.fill_bytes(&mut msg);
     cstr[0] = 0xff;
 
-    let mut hasher = KT128::hash(&msg, &cstr);
-    hasher.squeeze(&mut dig[..DLEN / 2]);
-    hasher.squeeze(&mut dig[DLEN / 2..]);
+    let mut xof = KT128::hash(&msg, &cstr);
+    xof.squeeze(&mut dig[..DLEN / 2]);
+    xof.squeeze(&mut dig[DLEN / 2..]);
 
     println!("Using KT128");
     println!("Message              = {}", const_hex::encode(&msg));

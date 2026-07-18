@@ -2,6 +2,11 @@
 use crate::utils::{get_ith_chunk, length_encode};
 use turboshake::sponge;
 
+#[cfg(feature = "cuda")]
+use crate::cuda::DeviceBuffer;
+#[cfg(feature = "cuda")]
+use core::time::Duration;
+
 #[cfg(not(feature = "cuda"))]
 use turboshake::TurboShake256;
 
@@ -179,17 +184,13 @@ impl KT256 {
 
     #[cfg(feature = "cuda")]
     pub fn hash(msg: &[u8], cstr: &[u8]) -> KT256XOF {
-        let state = crate::cuda::kt256_absorb_state(msg, cstr).unwrap_or_else(|e| panic!("KT256 GPU hashing failed: {e}"));
-
-        KT256XOF {
-            state,
-            squeezable: Self::RATE_BYTES,
-        }
+        let dmsg = DeviceBuffer::new(msg).unwrap_or_else(|e| panic!("KT256 GPU hashing failed: {e}"));
+        Self::hash_device(&dmsg, cstr).0
     }
 
     #[cfg(feature = "cuda")]
-    pub fn hash_timed(msg: &[u8], cstr: &[u8]) -> (KT256XOF, core::time::Duration) {
-        let (state, elapsed) = crate::cuda::kt256_absorb_state_timed(msg, cstr).unwrap_or_else(|e| panic!("KT256 GPU hashing failed: {e}"));
+    pub fn hash_device(dmsg: &DeviceBuffer, cstr: &[u8]) -> (KT256XOF, Duration) {
+        let (state, elapsed) = crate::cuda::kt256_absorb_device(dmsg, cstr).unwrap_or_else(|e| panic!("KT256 GPU hashing failed: {e}"));
 
         (
             KT256XOF {

@@ -4,6 +4,8 @@ use rand::Rng;
 use std::{hint::black_box, time::Duration};
 
 #[cfg(feature = "cuda")]
+use kangarootwelve::DeviceBuffer;
+#[cfg(feature = "cuda")]
 use std::time::Instant;
 
 fn bytes_to_human_readable(bytes: usize) -> String {
@@ -67,11 +69,12 @@ fn kt128(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(cfg.label()), &msg, |b, msg| {
             #[cfg(feature = "cuda")]
             b.iter_custom(|iters| {
+                let dmsg = DeviceBuffer::new(msg).unwrap();
                 let mut digest = vec![0u8; cfg.digest_byte_len];
                 let mut total = Duration::ZERO;
 
                 for _ in 0..iters {
-                    let (mut xof, hashed_in) = KT128::hash_timed(black_box(msg), black_box(&[]));
+                    let (mut xof, hashed_in) = KT128::hash_device(black_box(&dmsg), black_box(&[]));
 
                     let squeeze_begin = Instant::now();
                     xof.squeeze(black_box(&mut digest));
@@ -111,11 +114,12 @@ fn kt256(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(cfg.label()), &msg, |b, msg| {
             #[cfg(feature = "cuda")]
             b.iter_custom(|iters| {
+                let dmsg = DeviceBuffer::new(msg).unwrap();
                 let mut digest = vec![0u8; cfg.digest_byte_len];
                 let mut total = Duration::ZERO;
 
                 for _ in 0..iters {
-                    let (mut xof, hashed_in) = KT256::hash_timed(black_box(msg), black_box(&[]));
+                    let (mut xof, hashed_in) = KT256::hash_device(black_box(&dmsg), black_box(&[]));
 
                     let squeeze_begin = Instant::now();
                     xof.squeeze(black_box(&mut digest));
