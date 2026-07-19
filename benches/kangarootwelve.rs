@@ -38,10 +38,6 @@ impl KangarooTwelveConfig {
 
 const ARGS: &[KangarooTwelveConfig] = &[
     KangarooTwelveConfig {
-        msg_byte_len: 1usize << 5,
-        digest_byte_len: 32,
-    },
-    KangarooTwelveConfig {
         msg_byte_len: 1usize << 10,
         digest_byte_len: 32,
     },
@@ -51,6 +47,20 @@ const ARGS: &[KangarooTwelveConfig] = &[
     },
     KangarooTwelveConfig {
         msg_byte_len: 1usize << 30,
+        digest_byte_len: 32,
+    },
+    KangarooTwelveConfig {
+        msg_byte_len: 1usize << 32,
+        digest_byte_len: 32,
+    },
+    #[cfg(feature = "cuda")]
+    KangarooTwelveConfig {
+        msg_byte_len: 1usize << 34,
+        digest_byte_len: 32,
+    },
+    #[cfg(feature = "cuda")]
+    KangarooTwelveConfig {
+        msg_byte_len: 1usize << 35,
         digest_byte_len: 32,
     },
 ];
