@@ -12,24 +12,24 @@ BACKTRACE=RUST_BACKTRACE=1
 
 .PHONY: test
 test: ## Run all tests against the default single-threaded backend
-	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --profile test-release
+	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --release
 
 .PHONY: test-mt
 test-mt: ## Run all tests against the multi-threaded backend
-	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --profile test-release --features multi_threaded
+	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --release --features multi_threaded
 
 .PHONY: test-cuda
 test-cuda: ## Run all tests against the CUDA backend
-	$(BACKTRACE) cargo test --profile test-release --features cuda
+	$(BACKTRACE) cargo test --release --features cuda
 
 .PHONY: test-wasm
 test-wasm: ## Run all tests against the single-threaded backend, in WASM environment
-	$(BACKTRACE) cargo test --target wasm32-wasip1 --profile test-release --no-default-features
-	$(BACKTRACE) cargo test --target wasm32-wasip2 --profile test-release --no-default-features
+	$(BACKTRACE) cargo test --target wasm32-wasip1 --release --no-default-features
+	$(BACKTRACE) cargo test --target wasm32-wasip2 --release --no-default-features
 
 .PHONY: coverage
 coverage: ## Generates HTML code coverage report, using `cargo-tarpaulin`
-	cargo tarpaulin -t 600 --profile test-release --out Html
+	cargo tarpaulin -t 600 --release --out Html
 
 # ----------------------------------------------- Benchmarking --------------------------------------------------------
 
