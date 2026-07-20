@@ -51,10 +51,8 @@ unsafe extern "C" {
     fn kt_cuda_release(dptr: *mut u8);
 }
 
-/// An owned region of CUDA device memory holding a byte buffer uploaded from host memory.
-///
-/// Dropping the buffer frees the underlying device allocation. Use [`DeviceBuffer::as_ptr`] to obtain
-/// a device pointer for the GPU-resident hashing APIs.
+/// An owned region of CUDA device memory holding a byte buffer uploaded from host (CPU) memory.
+/// Dropping the buffer frees the underlying device allocation.
 pub struct DeviceBuffer {
     ptr: *mut u8,
     len: usize,

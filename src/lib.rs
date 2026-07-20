@@ -1,11 +1,13 @@
 #[cfg(all(feature = "cuda", feature = "multi_threaded"))]
-compile_error!("features `cuda` and `multi_threaded` are mutually exclusive; enable at most one hashing backend");
+compile_error!("features `cuda` and `multi_threaded` are mutually exclusive; you can enable only one at a time.");
 
 #[cfg(feature = "cuda")]
 mod cuda;
 
 mod kt128;
 mod kt256;
+
+#[cfg(test)]
 mod tests;
 
 #[cfg(not(feature = "cuda"))]
