@@ -1,13 +1,12 @@
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use kangarootwelve::{KT128, KT256};
 use rand::Rng;
-use std::{fmt::Debug, time::Duration};
+use std::{hint::black_box, time::Duration};
 
-#[global_allocator]
-static ALLOC: divan::AllocProfiler = divan::AllocProfiler::system();
-
-fn main() {
-    divan::Divan::default().bytes_format(divan::counter::BytesFormat::Binary).main();
-}
+#[cfg(feature = "cuda")]
+use kangarootwelve::DeviceBuffer;
+#[cfg(feature = "cuda")]
+use std::time::Instant;
 
 fn bytes_to_human_readable(bytes: usize) -> String {
     let units = ["B", "KB", "MB", "GB", "TB"];
@@ -22,76 +21,139 @@ fn bytes_to_human_readable(bytes: usize) -> String {
     format!("{:.2} {}", bytes, units[unit_index])
 }
 
-struct K12Config {
+struct KangarooTwelveConfig {
     msg_byte_len: usize,
     digest_byte_len: usize,
 }
 
-impl Debug for K12Config {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!(
-            "Hashing {} message, producing {} digest",
+impl KangarooTwelveConfig {
+    fn label(&self) -> String {
+        format!(
+            "hashing {} message, producing {} digest",
             bytes_to_human_readable(self.msg_byte_len),
             bytes_to_human_readable(self.digest_byte_len)
-        ))
+        )
     }
 }
 
-const ARGS: &[K12Config] = &[
-    K12Config {
-        msg_byte_len: 1usize << 5,
-        digest_byte_len: 32,
-    },
-    K12Config {
-        msg_byte_len: 1usize << 6,
-        digest_byte_len: 32,
-    },
-    K12Config {
+const ARGS: &[KangarooTwelveConfig] = &[
+    KangarooTwelveConfig {
         msg_byte_len: 1usize << 10,
         digest_byte_len: 32,
     },
-    K12Config {
-        msg_byte_len: 1usize << 15,
-        digest_byte_len: 32,
-    },
-    K12Config {
+    KangarooTwelveConfig {
         msg_byte_len: 1usize << 20,
         digest_byte_len: 32,
     },
-    K12Config {
-        msg_byte_len: 1usize << 25,
+    KangarooTwelveConfig {
+        msg_byte_len: 1usize << 30,
         digest_byte_len: 32,
     },
-    K12Config {
-        msg_byte_len: 1usize << 30,
+    KangarooTwelveConfig {
+        msg_byte_len: 1usize << 32,
+        digest_byte_len: 32,
+    },
+    #[cfg(feature = "cuda")]
+    KangarooTwelveConfig {
+        msg_byte_len: 1usize << 34,
+        digest_byte_len: 32,
+    },
+    #[cfg(feature = "cuda")]
+    KangarooTwelveConfig {
+        msg_byte_len: 1usize << 35,
         digest_byte_len: 32,
     },
 ];
 
-#[divan::bench(args = ARGS, max_time = Duration::from_secs(100), skip_ext_time = true)]
-fn kt128(bencher: divan::Bencher, k12_config: &K12Config) {
+fn kt128(c: &mut Criterion) {
     let mut rng = rand::rng();
-    let msg = (0..k12_config.msg_byte_len).map(|_| rng.random()).collect::<Vec<u8>>();
+    let mut group = c.benchmark_group("kt128");
 
-    bencher
-        .counter(divan::counter::BytesCount::new(k12_config.msg_byte_len + k12_config.digest_byte_len))
-        .with_inputs(|| vec![0u8; k12_config.digest_byte_len])
-        .bench_refs(|digest| {
-            let mut hasher = KT128::hash(divan::black_box(&msg), divan::black_box(&[]));
-            hasher.squeeze(divan::black_box(digest));
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(15));
+
+    for cfg in ARGS {
+        let msg = (0..cfg.msg_byte_len).map(|_| rng.random()).collect::<Vec<u8>>();
+
+        group.throughput(Throughput::Bytes((cfg.msg_byte_len + cfg.digest_byte_len) as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(cfg.label()), &msg, |b, msg| {
+            #[cfg(feature = "cuda")]
+            b.iter_custom(|iters| {
+                let dmsg = DeviceBuffer::new(msg).unwrap();
+                let mut digest = vec![0u8; cfg.digest_byte_len];
+                let mut total = Duration::ZERO;
+
+                for _ in 0..iters {
+                    let (mut xof, hashed_in) = KT128::hash_device(black_box(&dmsg), black_box(&[]));
+
+                    let squeeze_begin = Instant::now();
+                    xof.squeeze(black_box(&mut digest));
+
+                    total += hashed_in + squeeze_begin.elapsed();
+                }
+
+                total
+            });
+
+            #[cfg(not(feature = "cuda"))]
+            b.iter_batched(
+                || vec![0u8; cfg.digest_byte_len],
+                |mut digest| {
+                    KT128::hash(black_box(msg), black_box(&[])).squeeze(black_box(&mut digest));
+                    digest
+                },
+                criterion::BatchSize::SmallInput,
+            );
         });
+    }
+
+    group.finish();
 }
 
-#[divan::bench(args = ARGS, max_time = Duration::from_secs(100), skip_ext_time = true)]
-fn kt256(bencher: divan::Bencher, k12_config: &K12Config) {
+fn kt256(c: &mut Criterion) {
     let mut rng = rand::rng();
-    let msg = (0..k12_config.msg_byte_len).map(|_| rng.random()).collect::<Vec<u8>>();
+    let mut group = c.benchmark_group("kt256");
 
-    bencher
-        .counter(divan::counter::BytesCount::new(k12_config.msg_byte_len + k12_config.digest_byte_len))
-        .with_inputs(|| vec![0u8; k12_config.digest_byte_len])
-        .bench_refs(|digest| {
-            let mut hasher = KT256::hash(divan::black_box(&msg), divan::black_box(&[]));
-            hasher.squeeze(divan::black_box(digest));
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(15));
+
+    for cfg in ARGS {
+        let msg = (0..cfg.msg_byte_len).map(|_| rng.random()).collect::<Vec<u8>>();
+
+        group.throughput(Throughput::Bytes((cfg.msg_byte_len + cfg.digest_byte_len) as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(cfg.label()), &msg, |b, msg| {
+            #[cfg(feature = "cuda")]
+            b.iter_custom(|iters| {
+                let dmsg = DeviceBuffer::new(msg).unwrap();
+                let mut digest = vec![0u8; cfg.digest_byte_len];
+                let mut total = Duration::ZERO;
+
+                for _ in 0..iters {
+                    let (mut xof, hashed_in) = KT256::hash_device(black_box(&dmsg), black_box(&[]));
+
+                    let squeeze_begin = Instant::now();
+                    xof.squeeze(black_box(&mut digest));
+
+                    total += hashed_in + squeeze_begin.elapsed();
+                }
+
+                total
+            });
+
+            #[cfg(not(feature = "cuda"))]
+            b.iter_batched(
+                || vec![0u8; cfg.digest_byte_len],
+                |mut digest| {
+                    KT256::hash(black_box(msg), black_box(&[])).squeeze(black_box(&mut digest));
+                    digest
+                },
+                criterion::BatchSize::SmallInput,
+            );
         });
+    }
+
+    group.finish();
 }
+
+criterion_group!(benches, kt128, kt256);
+criterion_main!(benches);
