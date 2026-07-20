@@ -10,7 +10,7 @@ documentation = "https://github.com/itzmeanjan/kangarootwelve"
 readme = "README.md"
 repository = "https://github.com/itzmeanjan/kangarootwelve.git"
 license = "MIT"
-keywords = ["keccak", "xof", "turboshake", "kangarootwelve", "k12"]
+keywords = ["keccak", "xof", "kangarootwelve", "gpu", "high-throughput"]
 categories = ["cryptography"]
 build = "build.rs"
 
