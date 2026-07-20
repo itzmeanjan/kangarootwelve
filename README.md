@@ -11,15 +11,28 @@ Naturally it performs much better than hash functions specified in FIPS 202, i.e
 KangarooTwelve is specified in RFC 9861 <https://www.rfc-editor.org/info/rfc9861/>.
 It has two instances.
 
-- KT128, uses TurboSHAKE128 for hashing chunks.
-- KT256, uses TurboSHAKE256 for hashing chunks.
+- KT128, uses TurboSHAKE128 for hashing chunks. It offers up to 128 bits of collision resistance security.
+- KT256, uses TurboSHAKE256 for hashing chunks. It offers up to 256 bits of collision resistance security.
 
 Here I'm developing and maintaining a Rust library crate which implements KangarooTwelve.
 For now it does not expose a streamed hashing interface.
-The returned object from hashing the whole input message lets you squeeze arbitrary long output.
+Meaning the full message needs to be in-memory before it can be hashed.
+The returned object from hashing the message lets you squeeze arbitrary long output.
 This library lets you perform hashing either on CPU or NVIDIA GPUs.
 Both multi-threaded hashing on a CPU and hashing on a NVIDIA GPU is feature-gated.
-See [below](#usage) for example, showing how to use the library.
+Offloading hashing to GPUs, manufactured by other vendors, is not yet supported.
+
+KT128 XOF achieves a hashing throughput of ~215GiB/s on a data center-grade NVIDIA GPU.
+Multi-threaded hashing throughput on CPU systems largely depends on the number of logical cores.
+Achievable memory bandwidth affects hashing throughput on both CPU and GPU platforms.
+
+Platform | Throughput | Saturates for messages
+--- | --- | ---
+NVIDIA RTX PRO 6000 Blackwell Server Edition | 215GiB/s | >=16GiB
+Intel Xeon Platinum 8559C | 4.8GiB/s | >=1GiB
+Intel Core i7-1260P | 7.4GiB/s | >=1GiB
+
+See [below](#usage) examples, showing how to use the library.
 
 ## Prerequisites
 
@@ -54,6 +67,9 @@ make bench      # For CPUs, single-threaded
 make bench-mt   # For CPUs, multi-threaded
 make bench-cuda # For NVIDIA GPUs
 ```
+
+<details>
+<summary>Click to view detailed benchmark results</summary>
 
 > [!WARNING]
 > When benchmarking make sure you've disabled CPU frequency scaling, otherwise numbers you see can be misleading. I find the guide @ <https://github.com/google/benchmark/blob/b40db869/docs/reducing_variance.md> helpful.
@@ -179,6 +195,8 @@ kt256/hashing 4.00 GB message, producing 32.00 B digest
                         time:   [649.77 ms 653.72 ms 658.44 ms]
                         thrpt:  [6.0749 GiB/s 6.1188 GiB/s 6.1560 GiB/s]
 ```
+
+</details>
 
 ## Usage
 
