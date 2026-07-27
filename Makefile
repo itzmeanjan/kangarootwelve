@@ -12,11 +12,11 @@ BACKTRACE=RUST_BACKTRACE=1
 
 .PHONY: test
 test: ## Run all tests against the default single-threaded backend
-	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --release
+	$(BACKTRACE) cargo test --release
 
 .PHONY: test-mt
 test-mt: ## Run all tests against the multi-threaded backend
-	$(BACKTRACE) RUSTFLAGS="-C target-cpu=native" cargo test --release --features multi_threaded
+	$(BACKTRACE) cargo test --release --features multi_threaded
 
 .PHONY: test-cuda
 test-cuda: ## Run all tests against the CUDA backend
@@ -35,33 +35,33 @@ coverage: ## Generates HTML code coverage report, using `cargo-tarpaulin`
 
 .PHONY: bench
 bench: ## Run all benchmarks against the default single-threaded backend
-	RUSTFLAGS="-C target-cpu=native" cargo criterion
+	cargo criterion
 
 .PHONY: bench-mt
 bench-mt: ## Run all benchmarks against the multi-threaded backend
-	RUSTFLAGS="-C target-cpu=native" cargo criterion --features multi_threaded
+	cargo criterion --features multi_threaded
 
 .PHONY: bench-cuda
 bench-cuda: ## Run all benchmarks against the CUDA backend
-	RUSTFLAGS="-C target-cpu=native" cargo criterion --features cuda
+	cargo criterion --features cuda
 
 # ------------------------------------------- Using the library -------------------------------------------------------
 
 .PHONY: example
 example: ## Run examples, single-threaded
-	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128
-	RUSTFLAGS="-C target-cpu=native" cargo run --example kt256
+	cargo run --example kt128
+	cargo run --example kt256
 
 .PHONY: example-mt
 example-mt: ## Run examples, multi-threaded
-	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128 --features multi_threaded
-	RUSTFLAGS="-C target-cpu=native" cargo run --example kt256 --features multi_threaded
+	cargo run --example kt128 --features multi_threaded
+	cargo run --example kt256 --features multi_threaded
 
 .PHONY: example-cuda
 example-cuda: ## Run examples, on NVIDIA GPU
-	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128 --features cuda
-	RUSTFLAGS="-C target-cpu=native" cargo run --example kt256 --features cuda
-	RUSTFLAGS="-C target-cpu=native" cargo run --example kt128_cuda --features cuda
+	cargo run --example kt128 --features cuda
+	cargo run --example kt256 --features cuda
+	cargo run --example kt128_cuda --features cuda
 
 .PHONY: example-wasm
 example-wasm: ## Run examples in WASM environment
