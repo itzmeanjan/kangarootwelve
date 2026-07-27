@@ -21,6 +21,7 @@ The returned object from hashing the message lets you squeeze arbitrary long out
 This library lets you perform hashing either on CPU or NVIDIA GPUs.
 Both multi-threaded hashing on a CPU and hashing on a NVIDIA GPU is feature-gated.
 Offloading hashing to GPUs, manufactured by other vendors, is not yet supported.
+I describe the engineering behind high-throughput hashing on GPUs in article <https://itzmeanjan.in/pages/hashing-on-gpu-with-keccak.html>.
 
 KT128 XOF achieves a hashing throughput of ~215GiB/s on a data center-grade NVIDIA GPU.
 Multi-threaded hashing throughput on CPU systems largely depends on the number of logical cores.
