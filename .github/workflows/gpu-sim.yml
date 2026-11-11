@@ -1,0 +1,56 @@
+name: GPU Simulator
+
+# Optional, non-required check. The hosted runners have no GPU, so this builds
+# the `cuda` backend and runs `make test-cuda` (`cargo test --release --features
+# cuda`: the RFC 9861 KT128 and KT256 known-answer tests, hashed on the GPU) on a
+# simulated NVIDIA H100 (https://github.com/pantheongpu/pantheonsim). A simulator
+# cannot reproduce hardware-specific behavior or timing, so it complements
+# real-GPU testing and does not replace it.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - "cuda/**"
+      - "src/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - ".github/workflows/gpu-sim.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-cuda:
+    name: Test CUDA backend (CUDA 13.0 and simulated H100)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      # build.rs passes KT_CUDA_ARCH to nvcc as `-arch=`: compute_90 builds PTX
+      # only, which the simulator runs. It links cudart as a shared library.
+      KT_CUDA_ARCH: compute_90
+      NVCC: /usr/local/cuda-13.0/bin/nvcc
+      CUDA_LIB_DIR: /usr/local/cuda-13.0/lib64
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+
+      - name: Set up the simulated GPU and CUDA toolkit
+        uses: pantheongpu/setup-pantheonsim@ca87fe3143b29166822b923d6050945c5179408c # v0.1.5
+        with:
+          gpu: nvidia/h100
+          cuda-toolkit: "13.0"
+
+      - name: Build
+        run: cargo test --release --features cuda --no-run
+
+      - name: Test
+        run: vgpu run make test-cuda
